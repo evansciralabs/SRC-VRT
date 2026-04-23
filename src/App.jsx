@@ -3,10 +3,24 @@ import html2canvas from 'html2canvas';
 import GroundPlane from './components/GroundPlane';
 import ArtPlane from './components/ArtPlane';
 
-// VΞILPØINT SANITIZER: Precise Regex Extraction
-const extractRegex = (text, regex) => {
-  const match = text.match(regex);
-  return match ? (match[1] || match[0]) : null;
+// VΞILPØINT SANITIZER: Preserves HTML/SVG structure while isolating CSS and killing scripts
+const extractVeilpointPayload = (rawString) => {
+  if (!rawString || typeof rawString !== 'string') return null;
+
+  // 1. Extract CSS specifically
+  const cssMatch = rawString.match(/<style>([\s\S]*?)<\/style>/i);
+  const css = cssMatch ? cssMatch[1] : '';
+
+  // 2. Neutralize executable scripts and inline events
+  let safeHtml = rawString.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  safeHtml = safeHtml.replace(/ on\w+="[^"]*"/g, ''); // Kills onClick, onLoad, etc.
+  
+  // 3. Strip the style block from the HTML so we don't render it twice
+  safeHtml = safeHtml.replace(/<style>[\s\S]*?<\/style>/gi, '');
+
+  if (!css && !safeHtml.includes('<svg')) return null; // Ignore non-visual text
+
+  return { css, html: safeHtml.trim() };
 };
 
 export default function App() {
@@ -18,7 +32,7 @@ export default function App() {
   const [hardwareTrigger, setHardwareTrigger] = useState(0); 
   const [groundImage, setGroundImage] = useState(null);      
   
-  // Payload States (Objects containing { id, css, svg })
+  // Payload States
   const [payloads, setPayloads] = useState([]);
   const [activePayloadIdx, setActivePayloadIdx] = useState(0);
 
@@ -36,43 +50,34 @@ export default function App() {
           const json = JSON.parse(text);
           let extractedPayloads = [];
           
-          // Deep scan SRC-D2 schema for scratchpads
-          const scanForCode = (obj, labelPrefix = "FILE") => {
-            if (obj && typeof obj === 'object') {
-              if (obj.scratchpad) {
-                Object.keys(obj.scratchpad).forEach(tab => {
-                  const rawString = obj.scratchpad[tab];
-                  
-                  [span_5](start_span)// Strict Veilpoint extraction[span_5](end_span)
-                  const safeCSS = extractRegex(rawString, /<style>([\s\S]*?)<\/style>/i);
-                  const safeSVG = extractRegex(rawString, /<svg[\s\S]*?<\/svg>/i);
-                  
-                  if (safeCSS || safeSVG) {
-                    extractedPayloads.push({
-                      id: `${labelPrefix}-${tab}`.toUpperCase(),
-                      css: safeCSS || '',
-                      svg: safeSVG || ''
-                    });
-                  }
-                });
+          // Schema-Aware parsing for SRC-D2 architecture
+          const projects = json.projects || [];
+          projects.forEach(proj => {
+            const attachments = proj.attachments || [];
+            attachments.forEach(att => {
+              try {
+                // SRC-D2 attachments stringify their content
+                const contentObj = typeof att.content === 'string' ? JSON.parse(att.content) : att.content;
+                
+                if (contentObj && contentObj.scratchpad) {
+                  Object.keys(contentObj.scratchpad).forEach(tabKey => {
+                    const rawData = contentObj.scratchpad[tabKey];
+                    const payload = extractVeilpointPayload(rawData);
+                    
+                    if (payload) {
+                      extractedPayloads.push({
+                        id: `${att.label || 'FILE'}-${tabKey}`.toUpperCase(),
+                        css: payload.css,
+                        html: payload.html
+                      });
+                    }
+                  });
+                }
+              } catch (e) {
+                // Silently bypass unparseable attachment nodes
               }
-              // Recursively scan attachments
-              if (obj.attachments && Array.isArray(obj.attachments)) {
-                 obj.attachments.forEach(att => {
-                    try {
-                      const content = typeof att.content === 'string' ? JSON.parse(att.content) : att.content;
-                      scanForCode(content, att.label || "ATTACH");
-                    } catch(e) {} // Ignore non-JSON attachments
-                 });
-              } else if (Array.isArray(obj)) {
-                 obj.forEach(item => scanForCode(item, labelPrefix));
-              } else {
-                 Object.values(obj).forEach(val => scanForCode(val, labelPrefix));
-              }
-            }
-          };
-          
-          scanForCode(json, file.name.split('_')[0]);
+            });
+          });
 
           if (extractedPayloads.length > 0) {
             setPayloads(extractedPayloads);
@@ -149,15 +154,15 @@ export default function App() {
           >
             <ArtPlane isPitchMode={isPitchMode}>
               
-              {/* NATIVE RENDER ZONE */}
+              {/* VEILPOINT NATIVE RENDER ZONE */}
               {payloads.length > 0 ? (
                 <div className="relative w-full h-full flex flex-col pointer-events-none items-center justify-center">
                   
-                  [span_6](start_span){/* Injecting CSS and SVG natively[span_6](end_span) */}
+                  {/* Active Injected Markup */}
                   <style dangerouslySetInnerHTML={{ __html: payloads[activePayloadIdx].css }} />
                   <div 
                     className="w-full h-full flex items-center justify-center [&>svg]:max-w-full [&>svg]:max-h-full" 
-                    dangerouslySetInnerHTML={{ __html: payloads[activePayloadIdx].svg }} 
+                    dangerouslySetInnerHTML={{ __html: payloads[activePayloadIdx].html }} 
                   />
                   
                   {/* Thumb Carousel */}
