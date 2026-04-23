@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { solveHomography } from '../utils/mathUtils'; // Ensure this path matches your setup
+import solveHomography from '../utils/mathUtils';  // Ensure this path matches your setup
 
 // Calculate true center based on the device window
 const getCenteredCoordinates = () => {
