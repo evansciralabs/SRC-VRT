@@ -118,6 +118,7 @@ export default function GroundPlane({ children }) {
             ref={videoRef} 
             autoPlay 
             playsInline 
+            muted
             className="w-full h-full object-cover"
           />
           
@@ -150,7 +151,8 @@ export default function GroundPlane({ children }) {
             className="absolute inset-0 origin-center transition-transform duration-75"
             style={{
               backgroundImage: `url(${backgroundImage})`,
-              backgroundSize: 'cover',
+              backgroundSize: 'contain',
+              backgroundRepeat: 'no-repeat',
               backgroundPosition: 'center'
             }}
           />
