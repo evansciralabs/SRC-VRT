@@ -152,6 +152,7 @@ export default function GroundPlane({ children }) {
       )}
 
       {/* 3. CAPTURED STATE: RENDER LOOP */}
+            {/* 3. CAPTURED STATE: RENDER LOOP */}
       {backgroundImage && (
         <>
           <div 
@@ -170,6 +171,7 @@ export default function GroundPlane({ children }) {
           </button>
         </>
       )}
+
 
       {/* Hidden canvas for extraction */}
       <canvas ref={canvasRef} className="hidden" />
