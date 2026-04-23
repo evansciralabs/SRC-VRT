@@ -88,9 +88,9 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
       {/* UI CONTROLS */}
       {!isPitchMode && (
         <>
-          {/* PURGE LENS & RESET LENS */}
+          {/* PURGE LENS & RESET LENS (Shifted to top-28 to clear ArtPlane controls) */}
           {(groundImage || isCameraLive) && (
-            <div className="absolute top-20 left-4 z-50 flex items-center gap-2 pointer-events-auto">
+            <div className="absolute top-28 left-4 z-50 flex items-center gap-2 pointer-events-auto">
               <button onClick={handlePurge} className="w-8 h-8 flex items-center justify-center bg-black/80 border border-red-500 text-red-500 font-bold rounded hover:bg-red-900 shadow-[0_0_10px_rgba(255,0,0,0.3)] active:scale-95 transition-colors">✕</button>
               {groundImage && (
                 <button onClick={resetLens} className="px-3 h-8 bg-black/80 border border-cyan-500 text-cyan-400 text-xs font-mono rounded hover:bg-cyan-900 shadow-[0_0_10px_rgba(0,255,255,0.3)] active:scale-95 transition-colors">[ RESET LENS ]</button>
