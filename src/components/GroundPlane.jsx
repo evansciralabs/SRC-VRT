@@ -79,29 +79,37 @@ export default function GroundPlane({ children, isPitchMode }) {
   const crosshairY = Math.min(Math.max(tilt.beta * 2, -50), 50);
 
   return (
-    <div className="ground-plane-container relative w-full h-[80vh] bg-[#111] overflow-hidden flex items-center justify-center">
+    <div className="ground-plane-container relative w-full h-full bg-[#111] overflow-hidden flex items-center justify-center">
       
+      {/* ELEVATED PAYLOAD ZONE (z-40) */}
+      <div className="absolute inset-0 z-40 pointer-events-none">
+        {children}
+      </div>
+
+      {/* HARDWARE INIT CONTROLS (z-50) */}
       {!backgroundImage && !isCameraLive && !isPitchMode && (
-        <div className="absolute z-50 flex flex-col items-center gap-4">
+        <div className="absolute z-50 flex flex-col items-center gap-4 pointer-events-auto">
           <button 
             onClick={requestHardwareAccess}
-            className="bg-[#112222] border-2 border-cyan-400 text-cyan-400 px-6 py-3 rounded-md font-mono font-bold tracking-widest shadow-[0_0_15px_rgba(0,255,204,0.4)] hover:bg-cyan-900 transition-colors pointer-events-auto"
+            className="bg-[#112222] border-2 border-cyan-400 text-cyan-400 px-6 py-3 rounded-md font-mono font-bold tracking-widest shadow-[0_0_15px_rgba(0,255,204,0.4)] hover:bg-cyan-900 transition-colors"
           >
             [ INIT LENS & GYRO ]
           </button>
-          <label className="text-gray-500 border border-gray-700 px-4 py-2 rounded cursor-pointer hover:bg-gray-800 transition-colors font-mono text-xs pointer-events-auto">
+          <label className="text-gray-500 border border-gray-700 px-4 py-2 rounded cursor-pointer hover:bg-gray-800 transition-colors font-mono text-xs">
             FALLBACK: UPLOAD RASTER
             <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
           </label>
         </div>
       )}
 
+      {/* LIVE CAMERA FEED */}
       {isCameraLive && (
         <div className="absolute inset-0 z-20">
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
           
           {!isPitchMode && (
             <>
+              {/* Leveling Reticle */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="w-24 h-24 border-2 border-gray-400/50 rounded-full flex items-center justify-center relative">
                   <div 
@@ -112,9 +120,11 @@ export default function GroundPlane({ children, isPitchMode }) {
                 <div className={`absolute w-32 h-[1px] ${isLevel ? 'bg-green-400/80' : 'bg-cyan-400/30'}`} />
                 <div className={`absolute h-32 w-[1px] ${isLevel ? 'bg-green-400/80' : 'bg-cyan-400/30'}`} />
               </div>
+
+              {/* OVERRIDE: CAPTURE BUTTON ELEVATED TO z-50 */}
               <button 
                 onClick={captureFrame}
-                className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white text-black font-mono font-bold px-8 py-3 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.5)] active:scale-95 transition-transform z-30 pointer-events-auto"
+                className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-white text-black font-mono font-bold px-8 py-3 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.8)] active:scale-95 transition-transform z-50 pointer-events-auto"
               >
                 CAPTURE LOCK
               </button>
@@ -123,10 +133,11 @@ export default function GroundPlane({ children, isPitchMode }) {
         </div>
       )}
 
+      {/* FROZEN BACKGROUND RASTER */}
       {backgroundImage && (
         <>
           <div 
-            className="absolute inset-0 origin-center transition-transform duration-75 bg-black"
+            className="absolute inset-0 origin-center transition-transform duration-75 bg-black z-20 pointer-events-none"
             style={{
               backgroundImage: `url(${backgroundImage})`,
               backgroundSize: 'contain',
@@ -134,10 +145,11 @@ export default function GroundPlane({ children, isPitchMode }) {
               backgroundPosition: 'center'
             }}
           />
+          {/* OVERRIDE: PURGE BUTTON ELEVATED TO z-50 */}
           {!isPitchMode && (
             <button 
               onClick={() => setBackgroundImage(null)}
-              className="absolute top-4 right-4 z-50 bg-black/60 border border-red-500 text-red-500 px-3 py-1 text-xs font-mono rounded hover:bg-red-900 transition-colors pointer-events-auto"
+              className="absolute top-4 left-4 z-50 bg-black/60 border border-red-500 text-red-500 px-3 py-1 text-xs font-mono rounded hover:bg-red-900 transition-colors pointer-events-auto shadow-[0_0_10px_rgba(255,0,0,0.3)]"
             >
               PURGE LAYER
             </button>
@@ -146,11 +158,6 @@ export default function GroundPlane({ children, isPitchMode }) {
       )}
 
       <canvas ref={canvasRef} className="hidden" />
-
-      {/* ELEVATED PAYLOAD ZONE */}
-      <div className="absolute inset-0 z-40 pointer-events-none">
-        {children}
-      </div>
     </div>
   );
 }
