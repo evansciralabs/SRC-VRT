@@ -1,70 +1,100 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { calculateMatrix3D } from '../utils/mathUtils';
+import { solveHomography } from '../utils/mathUtils'; // Ensure this path matches your setup
 
-export default function ArtPlane({ activePayload }) {
-  const [anchors, setAnchors] = useState([
-    { x: 50, y: 50 },   
-    { x: 350, y: 50 },  
-    { x: 350, y: 350 }, 
-    { x: 50, y: 350 }   
-  ]);
+// Calculate true center based on the device window
+const getCenteredCoordinates = () => {
+  const w = typeof window !== 'undefined' ? window.innerWidth : 400;
+  // 80vh of screen height to match GroundPlane
+  const h = typeof window !== 'undefined' ? window.innerHeight * 0.8 : 600; 
+  const size = 120; // Radius from center. Total size will be 240x240px initially
   
-  const [transformMatrix, setTransformMatrix] = useState('none');
-  const draggingAnchor = useRef(null);
+  return [
+    { x: (w / 2) - size, y: (h / 2) - size }, // Top Left
+    { x: (w / 2) + size, y: (h / 2) - size }, // Top Right
+    { x: (w / 2) + size, y: (h / 2) + size }, // Bottom Right
+    { x: (w / 2) - size, y: (h / 2) + size }  // Bottom Left
+  ];
+};
 
+export default function ArtPlane({ children }) {
+  const [corners, setCorners] = useState(getCenteredCoordinates());
+  const [activeCorner, setActiveCorner] = useState(null);
+  const containerRef = useRef(null);
+
+  // Recalculate center if they rotate the device
   useEffect(() => {
-    const matrix = calculateMatrix3D(400, 400, anchors[0], anchors[1], anchors[2], anchors[3]);
-    setTransformMatrix(`matrix3d(${matrix.join(',')})`);
-  }, [anchors]);
+    const handleResize = () => setCorners(getCenteredCoordinates());
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handlePointerDown = (index, e) => {
-    draggingAnchor.current = index;
-    e.target.setPointerCapture(e.pointerId);
+    e.stopPropagation();
+    setActiveCorner(index);
   };
 
   const handlePointerMove = (e) => {
-    if (draggingAnchor.current === null) return;
-    const index = draggingAnchor.current;
-    setAnchors(prev => {
-      const newAnchors = [...prev];
-      newAnchors[index] = { 
-        x: newAnchors[index].x + e.movementX, 
-        y: newAnchors[index].y + e.movementY 
-      };
-      return newAnchors;
-    });
+    if (activeCorner === null || !containerRef.current) return;
+    
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const newCorners = [...corners];
+    newCorners[activeCorner] = { x, y };
+    setCorners(newCorners);
   };
 
-  const handlePointerUp = (e) => {
-    if (draggingAnchor.current !== null) {
-      e.target.releasePointerCapture(e.pointerId);
-      draggingAnchor.current = null;
-    }
+  const handlePointerUp = () => {
+    setActiveCorner(null);
   };
+
+  const resetPlane = () => {
+    setCorners(getCenteredCoordinates());
+  };
+
+  // Ensure matrix doesn't crash if homography fails
+  const transformMatrix = solveHomography(corners) || 'matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)';
 
   return (
-    <div className="art-plane absolute inset-0 pointer-events-none overflow-hidden z-10">
-      <div 
-        className="payload-container origin-top-left absolute"
-        style={{ transform: transformMatrix, width: '400px', height: '400px' }}
+    <div 
+      ref={containerRef}
+      className="absolute inset-0 w-full h-full pointer-events-auto"
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+    >
+      {/* RESET BUTTON */}
+      <button 
+        onClick={resetPlane}
+        className="absolute top-4 left-4 z-50 bg-[#112222]/90 border border-cyan-400 text-cyan-400 px-3 py-2 text-xs font-mono rounded hover:bg-cyan-900 transition-colors shadow-[0_0_10px_rgba(0,255,204,0.3)] active:scale-95"
       >
-        {activePayload && (
-          <>
-            <style dangerouslySetInnerHTML={{ __html: activePayload.css }} />
-            <div dangerouslySetInnerHTML={{ __html: activePayload.svg }} />
-          </>
-        )}
+        [ RESET PLANE ]
+      </button>
+
+      {/* THE TRANSFORMED PAYLOAD */}
+      <div 
+        className="absolute top-0 left-0 origin-top-left border border-cyan-500/50 shadow-[0_0_20px_rgba(0,255,204,0.1)]"
+        style={{
+          transform: transformMatrix,
+          width: '240px', // Matches the 'size * 2' in getCenteredCoordinates
+          height: '240px',
+          pointerEvents: 'none' // Let clicks pass through the art to the ground if needed
+        }}
+      >
+        {children}
       </div>
 
-      {anchors.map((point, i) => (
-        <div 
+      {/* DRAG ANCHORS */}
+      {corners.map((corner, i) => (
+        <div
           key={i}
-          className="anchor-point absolute w-6 h-6 bg-cyan-400 border-2 border-white rounded-full pointer-events-auto shadow-[0_0_12px_rgba(0,255,204,0.6)] hover:scale-110 transition-transform cursor-grab active:cursor-grabbing"
-          style={{ left: point.x - 12, top: point.y - 12, touchAction: 'none' }}
           onPointerDown={(e) => handlePointerDown(i, e)}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
+          className="absolute w-8 h-8 -ml-4 -mt-4 rounded-full border-2 border-cyan-400 bg-black/50 cursor-grab active:cursor-grabbing active:bg-cyan-400/50 transition-colors z-40 shadow-[0_0_10px_rgba(0,255,204,0.5)] touch-none"
+          style={{ 
+            left: corner.x, 
+            top: corner.y 
+          }}
         />
       ))}
     </div>
