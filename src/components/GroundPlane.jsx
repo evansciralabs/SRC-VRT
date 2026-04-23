@@ -3,8 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 export default function GroundPlane({ children }) {
   const [backgroundImage, setBackgroundImage] = useState(null);
   const [isCameraLive, setIsCameraLive] = useState(false);
+  const [mediaStream, setMediaStream] = useState(null);
   const [tilt, setTilt] = useState({ beta: 0, gamma: 0 }); 
-  const [permissionGranted, setPermissionGranted] = useState(false);
   
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -23,18 +23,15 @@ export default function GroundPlane({ children }) {
         const permissionState = await DeviceOrientationEvent.requestPermission();
         if (permissionState === 'granted') {
           window.addEventListener('deviceorientation', handleOrientation);
-          setPermissionGranted(true);
         } else {
           console.warn("Gyroscope access denied.");
         }
       } catch (error) {
-        console.error("Error requesting device orientation:", error);
+        console.error("Gyro error:", error);
       }
     } else {
       window.addEventListener('deviceorientation', handleOrientation);
-      setPermissionGranted(true);
     }
-    
     startCamera();
   };
 
@@ -44,14 +41,19 @@ export default function GroundPlane({ children }) {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: "environment" } 
       });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setIsCameraLive(true);
-      }
+      setMediaStream(stream);
+      setIsCameraLive(true);
     } catch (err) {
-      console.error("Camera initialization failed. Ensure HTTPS.", err);
+      console.error("Lens init failed. Ensure HTTPS.", err);
     }
   };
+
+  // CRITICAL FIX: Attach stream only AFTER video element renders
+  useEffect(() => {
+    if (isCameraLive && videoRef.current && mediaStream) {
+      videoRef.current.srcObject = mediaStream;
+    }
+  }, [isCameraLive, mediaStream]);
 
   const captureFrame = () => {
     if (videoRef.current && canvasRef.current) {
@@ -62,16 +64,15 @@ export default function GroundPlane({ children }) {
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       
-      const frameUrl = canvas.toDataURL('image/png');
-      setBackgroundImage(frameUrl);
+      setBackgroundImage(canvas.toDataURL('image/png'));
       stopCamera();
     }
   };
 
   const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = videoRef.current.srcObject.getTracks();
-      tracks.forEach(track => track.stop());
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop());
+      setMediaStream(null);
     }
     setIsCameraLive(false);
     window.removeEventListener('deviceorientation', handleOrientation);
@@ -81,8 +82,7 @@ export default function GroundPlane({ children }) {
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (file) {
-      const imageUrl = URL.createObjectURL(file);
-      setBackgroundImage(imageUrl);
+      setBackgroundImage(URL.createObjectURL(file));
     }
   };
 
@@ -99,12 +99,12 @@ export default function GroundPlane({ children }) {
         <div className="absolute z-50 flex flex-col items-center gap-4">
           <button 
             onClick={requestHardwareAccess}
-            className="bg-[#112222] border-2 border-cyan-400 text-cyan-400 px-6 py-3 rounded-md font-mono font-bold tracking-widest shadow-[0_0_15px_rgba(0,255,204,0.4)] hover:bg-cyan-900 transition-colors"
+            className="bg-[#112222] border-2 border-cyan-400 text-cyan-400 px-6 py-3 rounded-md font-mono font-bold tracking-widest shadow-[0_0_15px_rgba(0,255,204,0.4)] hover:bg-cyan-900 transition-colors pointer-events-auto"
           >
             [ INIT LENS & GYRO ]
           </button>
           
-          <label className="text-gray-500 border border-gray-700 px-4 py-2 rounded cursor-pointer hover:bg-gray-800 transition-colors font-mono text-xs">
+          <label className="text-gray-500 border border-gray-700 px-4 py-2 rounded cursor-pointer hover:bg-gray-800 transition-colors font-mono text-xs pointer-events-auto">
             FALLBACK: UPLOAD RASTER
             <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
           </label>
@@ -137,7 +137,7 @@ export default function GroundPlane({ children }) {
           {/* Capture Trigger */}
           <button 
             onClick={captureFrame}
-            className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white text-black font-mono font-bold px-8 py-3 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.5)] active:scale-95 transition-transform z-30"
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white text-black font-mono font-bold px-8 py-3 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.5)] active:scale-95 transition-transform z-30 pointer-events-auto"
           >
             CAPTURE LOCK
           </button>
@@ -158,15 +158,17 @@ export default function GroundPlane({ children }) {
           />
           <button 
             onClick={() => setBackgroundImage(null)}
-            className="absolute top-4 right-4 z-50 bg-black/60 border border-red-500 text-red-500 px-3 py-1 text-xs font-mono rounded hover:bg-red-900 transition-colors"
+            className="absolute top-4 right-4 z-50 bg-black/60 border border-red-500 text-red-500 px-3 py-1 text-xs font-mono rounded hover:bg-red-900 transition-colors pointer-events-auto"
           >
             PURGE LAYER
           </button>
         </>
       )}
 
+      {/* Hidden canvas for extraction */}
       <canvas ref={canvasRef} className="hidden" />
 
+      {/* The payload injection zone */}
       <div className="absolute inset-0 z-10 pointer-events-none">
         {children}
       </div>
