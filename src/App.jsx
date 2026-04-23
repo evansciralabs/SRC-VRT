@@ -3,22 +3,25 @@ import * as htmlToImage from 'html-to-image';
 import GroundPlane from './components/GroundPlane';
 import ArtPlane from './components/ArtPlane';
 
-// VΞILPØINT SANITIZER: Strict Structural Gate
+// VΞILPØINT SANITIZER: Strict Visual Mandate
 const extractVeilpointPayload = (rawString) => {
   if (!rawString || typeof rawString !== 'string') return null;
 
-  // HOSTILE EXCLUSION: Catch extended React/JS source code
+  // HOSTILE EXCLUSION: Catch extended React/JS source code & JSON configs
   const killWords = [
     'import React', 'export default', '<!DOCTYPE html>', 
     'function App', 'ReactDOM', 'module.exports', 
-    'import {', 'export const'
+    'import {', 'export const', '"dependencies":'
   ];
   if (killWords.some(word => rawString.includes(word))) return null;
+
+  // STRICT VISUAL MANDATE: If it lacks CSS and SVG, it is a text note. Incinerate it.
+  if (!rawString.includes('<style') && !rawString.includes('<svg')) return null;
 
   const cssMatch = rawString.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
   let css = cssMatch ? cssMatch.map(m => m.replace(/<\/?style[^>]*>/gi, '')).join('\n') : '';
 
-  // OVERRIDE: Force absolute transparency AND strip native borders (fixes the brown border issue)
+  // OVERRIDE: Force absolute transparency AND strip native borders
   css += `\n body, main, div#root, .calibration-grid { background-color: transparent !important; background: transparent !important; border: none !important; outline: none !important; box-shadow: none !important; }`;
 
   let html = rawString
@@ -30,10 +33,8 @@ const extractVeilpointPayload = (rawString) => {
     .replace(/<\/?head[^>]*>/gi, '')                                    
     .replace(/<\/?body[^>]*>/gi, '');
 
-  // STRICT STRUCTURAL GATE: Must contain actual renderable DOM nodes (filters out raw text notes)
-  const hasRenderableNodes = /<(svg|div|main|section|canvas|nav|header|footer)[^>]*>/i.test(html);
-
-  if (!css.trim() && !hasRenderableNodes) return null;
+  // Final confirmation: if the CSS is empty and no SVG remains, drop it.
+  if (!css.trim() && !html.includes('<svg')) return null;
 
   return { css, html: html.trim() };
 };
