@@ -11,20 +11,14 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
     if (hardwareTrigger > 0) requestHardwareAccess();
   }, [hardwareTrigger]);
 
-  const handleOrientation = (event) => {
-    setTilt({ beta: event.beta || 0, gamma: event.gamma || 0 });
-  };
+  const handleOrientation = (event) => setTilt({ beta: event.beta || 0, gamma: event.gamma || 0 });
 
   const requestHardwareAccess = async () => {
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       try {
         const permissionState = await DeviceOrientationEvent.requestPermission();
-        if (permissionState === 'granted') {
-          window.addEventListener('deviceorientation', handleOrientation);
-        }
-      } catch (error) {
-        console.error("Gyro error:", error);
-      }
+        if (permissionState === 'granted') window.addEventListener('deviceorientation', handleOrientation);
+      } catch (error) { console.error("Gyro error:", error); }
     } else {
       window.addEventListener('deviceorientation', handleOrientation);
     }
@@ -36,9 +30,7 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       setMediaStream(stream);
       setIsCameraLive(true);
-    } catch (err) {
-      console.error("Lens init failed:", err);
-    }
+    } catch (err) { console.error("Lens init failed:", err); }
   };
 
   useEffect(() => {
@@ -47,13 +39,12 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
     }
   }, [isCameraLive, mediaStream]);
 
-  // IN-MEMORY CAPTURE FIX: Bypasses hidden DOM restrictions
-  const captureFrame = () => {
+  // BRUTE FORCE CAPTURE (Fires instantly on touch down)
+  const captureFrame = (e) => {
+    e.stopPropagation();
     const video = videoRef.current;
     if (video) {
-      // Generate canvas buffer entirely in memory
       const memoryCanvas = document.createElement('canvas');
-      // Force dimensions to native video resolution or fallback to viewport
       memoryCanvas.width = video.videoWidth || video.clientWidth || window.innerWidth;
       memoryCanvas.height = video.videoHeight || video.clientHeight || window.innerHeight;
       
@@ -86,18 +77,15 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
   return (
     <div className="ground-plane-container relative w-full h-full bg-[#111] overflow-hidden flex items-center justify-center">
       
-      {/* ART PLANE (z-40) */}
-      <div className="absolute inset-0 z-40 pointer-events-none">
-        {children}
-      </div>
+      {children} {/* ArtPlane renders here */}
 
-      {/* LIVE LENS FEED */}
       {isCameraLive && (
         <div className="absolute inset-0 z-20">
-          <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+          <video ref={videoRef} autoPlay playsInline muted crossOrigin="anonymous" className="w-full h-full object-cover" />
           
           {!isPitchMode && (
             <>
+              {/* Gyro Reticle */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="w-24 h-24 border-2 border-gray-400/50 rounded-full flex items-center justify-center relative">
                   <div 
@@ -109,10 +97,10 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
                 <div className={`absolute h-32 w-[1px] ${isLevel ? 'bg-green-400/80' : 'bg-cyan-400/30'}`} />
               </div>
 
-              {/* ELEVATED CAPTURE BUTTON */}
+              {/* ELEVATED CAPTURE BUTTON (Avoids carousel collision, fires onPointerDown) */}
               <button 
-                onClick={captureFrame}
-                className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-white text-black font-mono font-bold px-8 py-3 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.8)] active:scale-95 transition-transform z-50 pointer-events-auto"
+                onPointerDown={captureFrame}
+                className="absolute bottom-28 left-1/2 -translate-x-1/2 bg-white text-black font-mono font-bold px-8 py-3 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.8)] active:scale-95 transition-transform z-[65] pointer-events-auto"
               >
                 CAPTURE LOCK
               </button>
@@ -121,7 +109,6 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
         </div>
       )}
 
-      {/* FROZEN BACKGROUND RASTER */}
       {groundImage && (
         <div 
           className="absolute inset-0 origin-center transition-transform duration-75 bg-black z-20 pointer-events-none"
@@ -134,11 +121,11 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
         />
       )}
 
-      {/* PURGE BUTTON: Repositioned to sit directly beneath Reset Plane (top-16) */}
+      {/* PURGE BUTTON: Re-aligned to top-20 to clear Reset Plane by 1rem */}
       {!isPitchMode && (groundImage || isCameraLive) && (
         <button 
           onClick={handlePurge}
-          className="absolute top-16 left-4 z-50 bg-black/80 border border-red-500 text-red-500 px-3 py-2 text-xs font-mono rounded hover:bg-red-900 transition-colors pointer-events-auto shadow-[0_0_10px_rgba(255,0,0,0.3)] active:scale-95"
+          className="absolute top-20 left-4 z-50 bg-black/80 border border-red-500 text-red-500 px-3 py-2 text-xs font-mono rounded hover:bg-red-900 transition-colors pointer-events-auto shadow-[0_0_10px_rgba(255,0,0,0.3)] active:scale-95"
         >
           [ PURGE LENS ]
         </button>
