@@ -1,70 +1,74 @@
-export const calculateMatrix3D = (w, h, p1, p2, p3, p4) => {
-  const sx1 = 0, sy1 = 0;
-  const sx2 = w, sy2 = 0;
-  const sx3 = w, sy3 = h;
-  const sx4 = 0, sy4 = h;
+/**
+ * >>> W-Y EVANSCIRA LABS // SDAP-7 HOMOGRAPHY SOLVER
+ * Calculates a 4-point perspective transform matrix to map a 2D rectangle
+ * to an arbitrary quadrilateral in 3D space.
+ */
 
-  const dx1 = p1.x, dy1 = p1.y;
-  const dx2 = p2.x, dy2 = p2.y;
-  const dx3 = p3.x, dy3 = p3.y;
-  const dx4 = p4.x, dy4 = p4.y;
+export default function solveHomography(corners) {
+  if (!corners || corners.length !== 4) return null;
 
-  const matrix = [
-    sx1, sy1, 1, 0, 0, 0, -dx1 * sx1, -dx1 * sy1,
-    0, 0, 0, sx1, sy1, 1, -dy1 * sx1, -dy1 * sy1,
-    sx2, sy2, 1, 0, 0, 0, -dx2 * sx2, -dx2 * sy2,
-    0, 0, 0, sx2, sy2, 1, -dy2 * sx2, -dy2 * sy2,
-    sx3, sy3, 1, 0, 0, 0, -dx3 * sx3, -dx3 * sy3,
-    0, 0, 0, sx3, sy3, 1, -dy3 * sx3, -dy3 * sy3,
-    sx4, sy4, 1, 0, 0, 0, -dx4 * sx4, -dx4 * sy4,
-    0, 0, 0, sx4, sy4, 1, -dy4 * sx4, -dy4 * sy4
+  // The base resolution of the ArtPlane (240x240)
+  const w = 240;
+  const h = 240;
+
+  const dst = corners;
+
+  // Algebraic resolution for mapping a rectangle to a quadrilateral
+  const dx1 = dst[1].x - dst[2].x;
+  const dx2 = dst[3].x - dst[2].x;
+  const dx3 = dst[0].x - dst[1].x + dst[2].x - dst[3].x;
+
+  const dy1 = dst[1].y - dst[2].y;
+  const dy2 = dst[3].y - dst[2].y;
+  const dy3 = dst[0].y - dst[1].y + dst[2].y - dst[3].y;
+
+  let a13 = dst[0].x;
+  let a23 = dst[0].y;
+  let a33 = 1;
+
+  let a11, a12, a21, a22, a31, a32;
+
+  if (dx3 === 0 && dy3 === 0) {
+    // Affine transformation (flat 2D plane)
+    a11 = dst[1].x - dst[0].x;
+    a21 = dst[1].y - dst[0].y;
+    a31 = 0;
+    a12 = dst[2].x - dst[1].x;
+    a22 = dst[2].y - dst[1].y;
+    a32 = 0;
+  } else {
+    // Perspective transformation (3D tilt)
+    const det1 = dx1 * dy2 - dy1 * dx2;
+    if (det1 === 0) return null; // Avoid division by zero on matrix collapse
+
+    a31 = (dx3 * dy2 - dy3 * dx2) / det1;
+    a32 = (dx1 * dy3 - dy1 * dx3) / det1;
+
+    a11 = dst[1].x - dst[0].x + a31 * dst[1].x;
+    a21 = dst[1].y - dst[0].y + a31 * dst[1].y;
+    a12 = dst[3].x - dst[0].x + a32 * dst[3].x;
+    a22 = dst[3].y - dst[0].y + a32 * dst[3].y;
+  }
+
+  // Normalize by the base width and height
+  a11 /= w;
+  a21 /= w;
+  a31 /= w;
+  a12 /= h;
+  a22 /= h;
+  a32 /= h;
+
+  // Map to CSS matrix3d sequence
+  // Note: CSS matrix3d is column-major
+  const H = [
+    a11, a21, 0, a31,
+    a12, a22, 0, a32,
+    0,   0,   1, 0,
+    a13, a23, 0, a33
   ];
 
-  const rightHandSide = [dx1, dy1, dx2, dy2, dx3, dy3, dx4, dy4];
-  const h_vars = solveLinearSystem(matrix, rightHandSide);
-
-  return [
-    h_vars[0], h_vars[3], 0, h_vars[6],
-    h_vars[1], h_vars[4], 0, h_vars[7],
-    0,         0,         1, 0,
-    h_vars[2], h_vars[5], 0, 1
-  ].map(val => val.toFixed(6)); 
-};
-
-function solveLinearSystem(A, b) {
-  const n = 8;
-  for (let i = 0; i < n; i++) {
-    let maxRow = i;
-    for (let k = i + 1; k < n; k++) {
-      if (Math.abs(A[k * n + i]) > Math.abs(A[maxRow * n + i])) {
-        maxRow = k;
-      }
-    }
-    for (let k = i; k < n; k++) {
-      const temp = A[i * n + k];
-      A[i * n + k] = A[maxRow * n + k];
-      A[maxRow * n + k] = temp;
-    }
-    const tempB = b[i];
-    b[i] = b[maxRow];
-    b[maxRow] = tempB;
-
-    for (let k = i + 1; k < n; k++) {
-      const factor = A[k * n + i] / A[i * n + i];
-      b[k] -= factor * b[i];
-      for (let j = i; j < n; j++) {
-        A[k * n + j] -= factor * A[i * n + j];
-      }
-    }
-  }
-
-  const x = new Array(n).fill(0);
-  for (let i = n - 1; i >= 0; i--) {
-    let sum = 0;
-    for (let j = i + 1; j < n; j++) {
-      sum += A[i * n + j] * x[j];
-    }
-    x[i] = (b[i] - sum) / A[i * n + i];
-  }
-  return x;
+  // Truncate to 5 decimals to prevent CSS parser scientific notation errors
+  const formatNum = (n) => Number(n.toFixed(5));
+  
+  return `matrix3d(${H.map(formatNum).join(', ')})`;
 }
