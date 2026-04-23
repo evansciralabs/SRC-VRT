@@ -44,7 +44,6 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
 
   const transformMatrix = solveHomography(corners) || 'matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)';
 
-  // GHOST STATE: Render completely invisible wrapper if no .srcd is loaded
   if (!isActive) {
     return <div className="absolute inset-0 pointer-events-none z-40">{children}</div>;
   }
@@ -57,25 +56,24 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
     >
-      {/* UI CONTROLS: Holographic Clear X + Reset Matrix */}
       {!isPitchMode && (
         <div className="absolute top-16 left-4 z-50 flex items-center gap-2 pointer-events-auto">
+          {/* CORRECTED: Hostile Red Purge Trigger */}
           <button 
             onClick={clearPayload} 
-            className="w-8 h-8 flex items-center justify-center bg-[#112222]/90 border border-cyan-400 text-cyan-400 font-bold rounded hover:bg-cyan-900 shadow-[0_0_10px_rgba(0,255,204,0.3)] active:scale-95"
+            className="w-8 h-8 flex items-center justify-center bg-black/80 border border-red-500 text-red-500 font-bold rounded hover:bg-red-900 shadow-[0_0_10px_rgba(255,0,0,0.3)] active:scale-95 transition-colors"
           >
             ✕
           </button>
           <button 
             onClick={resetPlane}
-            className="px-3 h-8 bg-[#112222]/90 border border-cyan-400 text-cyan-400 text-xs font-mono rounded hover:bg-cyan-900 shadow-[0_0_10px_rgba(0,255,204,0.3)] active:scale-95"
+            className="px-3 h-8 bg-[#112222]/90 border border-cyan-400 text-cyan-400 text-xs font-mono rounded hover:bg-cyan-900 shadow-[0_0_10px_rgba(0,255,204,0.3)] active:scale-95 transition-colors"
           >
             [ RESET PLANE ]
           </button>
         </div>
       )}
 
-      {/* TRANSPARENT MATRIX PAYLOAD (Removed bg-black/40) */}
       <div 
         className="absolute top-0 left-0 origin-top-left flex items-center justify-center overflow-visible"
         style={{ transform: transformMatrix, width: '240px', height: '240px', pointerEvents: 'none' }}
@@ -83,7 +81,6 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
         {children}
       </div>
 
-      {/* ANCHOR POINTS */}
       {!isPitchMode && corners.map((corner, i) => (
         <div
           key={i}
