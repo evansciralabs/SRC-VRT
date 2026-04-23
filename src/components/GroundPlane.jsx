@@ -48,13 +48,16 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
     }
   }, [isCameraLive, mediaStream]);
 
-  // STABILIZED CAPTURE LOGIC
+  // BRUTE FORCE CAPTURE LOGIC
   const captureFrame = () => {
-    if (videoRef.current && canvasRef.current && videoRef.current.videoWidth > 0) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    
+    if (video && canvas) {
+      // Force dimensions to prevent 0x0 silent crashes
+      canvas.width = video.videoWidth || video.clientWidth || 1080;
+      canvas.height = video.videoHeight || video.clientHeight || 1920;
+      
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       setGroundImage(canvas.toDataURL('image/png'));
@@ -71,7 +74,6 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
     window.removeEventListener('deviceorientation', handleOrientation);
   };
 
-  // UNIFIED PURGE COMMAND
   const handlePurge = () => {
     setGroundImage(null);
     if (isCameraLive) stopCamera();
@@ -128,7 +130,6 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
         />
       )}
 
-      {/* RE-ALIGNED PURGE BUTTON: Placed next to ArtPlane Reset (left-36) */}
       {!isPitchMode && (groundImage || isCameraLive) && (
         <button 
           onClick={handlePurge}
