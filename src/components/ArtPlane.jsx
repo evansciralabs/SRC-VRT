@@ -14,7 +14,7 @@ const getCenteredCoordinates = () => {
   ];
 };
 
-export default function ArtPlane({ children, isPitchMode, isActive }) {
+export default function ArtPlane({ children, isPitchMode, isActive, clearPayload }) {
   const [corners, setCorners] = useState(getCenteredCoordinates());
   const [activeCorner, setActiveCorner] = useState(null);
   const containerRef = useRef(null);
@@ -44,7 +44,7 @@ export default function ArtPlane({ children, isPitchMode, isActive }) {
 
   const transformMatrix = solveHomography(corners) || 'matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)';
 
-  // If no payload is active, render an invisible container to prevent gyro obstruction
+  // GHOST STATE: Render completely invisible wrapper if no .srcd is loaded
   if (!isActive) {
     return <div className="absolute inset-0 pointer-events-none z-40">{children}</div>;
   }
@@ -57,24 +57,33 @@ export default function ArtPlane({ children, isPitchMode, isActive }) {
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
     >
+      {/* UI CONTROLS: Holographic Clear X + Reset Matrix */}
       {!isPitchMode && (
-        <button 
-          onClick={resetPlane}
-          className="absolute top-4 left-4 z-50 bg-[#112222]/90 border border-cyan-400 text-cyan-400 px-3 py-2 text-xs font-mono rounded shadow-[0_0_10px_rgba(0,255,204,0.3)] active:scale-95"
-        >
-          [ RESET PLANE ]
-        </button>
+        <div className="absolute top-16 left-4 z-50 flex items-center gap-2 pointer-events-auto">
+          <button 
+            onClick={clearPayload} 
+            className="w-8 h-8 flex items-center justify-center bg-[#112222]/90 border border-cyan-400 text-cyan-400 font-bold rounded hover:bg-cyan-900 shadow-[0_0_10px_rgba(0,255,204,0.3)] active:scale-95"
+          >
+            ✕
+          </button>
+          <button 
+            onClick={resetPlane}
+            className="px-3 h-8 bg-[#112222]/90 border border-cyan-400 text-cyan-400 text-xs font-mono rounded hover:bg-cyan-900 shadow-[0_0_10px_rgba(0,255,204,0.3)] active:scale-95"
+          >
+            [ RESET PLANE ]
+          </button>
+        </div>
       )}
 
+      {/* TRANSPARENT MATRIX PAYLOAD (Removed bg-black/40) */}
       <div 
-        className={`absolute top-0 left-0 origin-top-left flex items-center justify-center [&>*]:max-w-full [&>*]:max-h-full overflow-hidden transition-colors duration-75 ${
-          isPitchMode ? '' : 'border border-cyan-500/80 bg-black/40 shadow-[0_0_20px_rgba(0,255,204,0.2)]'
-        }`}
+        className="absolute top-0 left-0 origin-top-left flex items-center justify-center overflow-visible"
         style={{ transform: transformMatrix, width: '240px', height: '240px', pointerEvents: 'none' }}
       >
         {children}
       </div>
 
+      {/* ANCHOR POINTS */}
       {!isPitchMode && corners.map((corner, i) => (
         <div
           key={i}
