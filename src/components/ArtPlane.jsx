@@ -14,7 +14,7 @@ const getCenteredCoordinates = () => {
   ];
 };
 
-export default function ArtPlane({ children, isPitchMode }) {
+export default function ArtPlane({ children, isPitchMode, isActive }) {
   const [corners, setCorners] = useState(getCenteredCoordinates());
   const [activeCorner, setActiveCorner] = useState(null);
   const containerRef = useRef(null);
@@ -26,37 +26,33 @@ export default function ArtPlane({ children, isPitchMode }) {
   }, []);
 
   const handlePointerDown = (index, e) => {
-    if (isPitchMode) return;
+    if (isPitchMode || !isActive) return;
     e.stopPropagation();
     setActiveCorner(index);
   };
 
   const handlePointerMove = (e) => {
-    if (activeCorner === null || !containerRef.current || isPitchMode) return;
-    
+    if (activeCorner === null || !containerRef.current || isPitchMode || !isActive) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
     const newCorners = [...corners];
-    newCorners[activeCorner] = { x, y };
+    newCorners[activeCorner] = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     setCorners(newCorners);
   };
 
-  const handlePointerUp = () => {
-    setActiveCorner(null);
-  };
-
-  const resetPlane = () => {
-    setCorners(getCenteredCoordinates());
-  };
+  const handlePointerUp = () => setActiveCorner(null);
+  const resetPlane = () => setCorners(getCenteredCoordinates());
 
   const transformMatrix = solveHomography(corners) || 'matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)';
+
+  // If no payload is active, render an invisible container to prevent gyro obstruction
+  if (!isActive) {
+    return <div className="absolute inset-0 pointer-events-none z-40">{children}</div>;
+  }
 
   return (
     <div 
       ref={containerRef}
-      className="absolute inset-0 w-full h-full pointer-events-auto"
+      className="absolute inset-0 w-full h-full pointer-events-auto z-40"
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
@@ -64,7 +60,7 @@ export default function ArtPlane({ children, isPitchMode }) {
       {!isPitchMode && (
         <button 
           onClick={resetPlane}
-          className="absolute top-4 left-4 z-50 bg-[#112222]/90 border border-cyan-400 text-cyan-400 px-3 py-2 text-xs font-mono rounded hover:bg-cyan-900 transition-colors shadow-[0_0_10px_rgba(0,255,204,0.3)] active:scale-95"
+          className="absolute top-4 left-4 z-50 bg-[#112222]/90 border border-cyan-400 text-cyan-400 px-3 py-2 text-xs font-mono rounded shadow-[0_0_10px_rgba(0,255,204,0.3)] active:scale-95"
         >
           [ RESET PLANE ]
         </button>
@@ -74,12 +70,7 @@ export default function ArtPlane({ children, isPitchMode }) {
         className={`absolute top-0 left-0 origin-top-left flex items-center justify-center [&>*]:max-w-full [&>*]:max-h-full overflow-hidden transition-colors duration-75 ${
           isPitchMode ? '' : 'border border-cyan-500/80 bg-black/40 shadow-[0_0_20px_rgba(0,255,204,0.2)]'
         }`}
-        style={{
-          transform: transformMatrix,
-          width: '240px', 
-          height: '240px',
-          pointerEvents: 'none' 
-        }}
+        style={{ transform: transformMatrix, width: '240px', height: '240px', pointerEvents: 'none' }}
       >
         {children}
       </div>
@@ -88,7 +79,7 @@ export default function ArtPlane({ children, isPitchMode }) {
         <div
           key={i}
           onPointerDown={(e) => handlePointerDown(i, e)}
-          className="absolute w-8 h-8 -ml-4 -mt-4 rounded-full border-2 border-cyan-400 bg-black/50 cursor-grab active:cursor-grabbing active:bg-cyan-400/50 transition-colors z-40 shadow-[0_0_10px_rgba(0,255,204,0.5)] touch-none"
+          className="absolute w-8 h-8 -ml-4 -mt-4 rounded-full border-2 border-cyan-400 bg-black/50 cursor-grab active:cursor-grabbing active:bg-cyan-400/50 shadow-[0_0_10px_rgba(0,255,204,0.5)] touch-none z-[60]"
           style={{ left: corner.x, top: corner.y }}
         />
       ))}
