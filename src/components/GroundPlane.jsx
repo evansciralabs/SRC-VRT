@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 export default function GroundPlane({ children }) {
   const [backgroundImage, setBackgroundImage] = useState(null);
   const [isCameraLive, setIsCameraLive] = useState(false);
-  const [tilt, setTilt] = useState({ beta: 0, gamma: 0 }); // beta = front/back tilt, gamma = left/right tilt
+  const [tilt, setTilt] = useState({ beta: 0, gamma: 0 }); 
   const [permissionGranted, setPermissionGranted] = useState(false);
   
   const videoRef = useRef(null);
@@ -18,7 +18,6 @@ export default function GroundPlane({ children }) {
   };
 
   const requestHardwareAccess = async () => {
-    // iOS 13+ Gyroscope Permission Gate
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       try {
         const permissionState = await DeviceOrientationEvent.requestPermission();
@@ -32,7 +31,6 @@ export default function GroundPlane({ children }) {
         console.error("Error requesting device orientation:", error);
       }
     } else {
-      // Non-iOS devices
       window.addEventListener('deviceorientation', handleOrientation);
       setPermissionGranted(true);
     }
@@ -44,7 +42,7 @@ export default function GroundPlane({ children }) {
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "environment" } // Forces the rear camera
+        video: { facingMode: "environment" } 
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -89,10 +87,7 @@ export default function GroundPlane({ children }) {
   };
 
   // --- UI COMPUTATIONS ---
-  // A perfectly flat phone has beta and gamma near 0.
   const isLevel = Math.abs(tilt.beta) < 3 && Math.abs(tilt.gamma) < 3;
-  
-  // Map tilt to CSS translation for the crosshair
   const crosshairX = Math.min(Math.max(tilt.gamma * 2, -50), 50);
   const crosshairY = Math.min(Math.max(tilt.beta * 2, -50), 50);
 
@@ -128,15 +123,12 @@ export default function GroundPlane({ children }) {
           
           {/* Leveling Reticle */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            {/* Outer static ring */}
             <div className="w-24 h-24 border-2 border-gray-400/50 rounded-full flex items-center justify-center relative">
-              {/* Inner dynamic bubble mapped to gyroscope */}
               <div 
                 className={`w-6 h-6 rounded-full transition-all duration-75 shadow-[0_0_10px_rgba(0,0,0,0.8)] ${isLevel ? 'bg-green-500 scale-125' : 'bg-red-500'}`}
                 style={{ transform: `translate(${crosshairX}px, ${crosshairY}px)` }}
               />
             </div>
-            {/* Axis Lines */}
             <div className={`absolute w-32 h-[1px] ${isLevel ? 'bg-green-400/80' : 'bg-cyan-400/30'}`} />
             <div className={`absolute h-32 w-[1px] ${isLevel ? 'bg-green-400/80' : 'bg-cyan-400/30'}`} />
           </div>
@@ -152,7 +144,6 @@ export default function GroundPlane({ children }) {
       )}
 
       {/* 3. CAPTURED STATE: RENDER LOOP */}
-            {/* 3. CAPTURED STATE: RENDER LOOP */}
       {backgroundImage && (
         <>
           <div 
@@ -172,26 +163,7 @@ export default function GroundPlane({ children }) {
         </>
       )}
 
-
-      {/* Hidden canvas for extraction */}
       <canvas ref={canvasRef} className="hidden" />
-
-      {/* The payload injection zone */}
-      <div className="absolute inset-0 z-10 pointer-events-none">
-        {children}
-      </div>
-    </div>
-  );
-}
-          className="absolute inset-0 origin-center transition-transform duration-75"
-          style={{
-            backgroundImage: `url(${backgroundImage})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale}) rotate(${rotation}deg)`
-          }}
-        />
-      )}
 
       <div className="absolute inset-0 z-10 pointer-events-none">
         {children}
