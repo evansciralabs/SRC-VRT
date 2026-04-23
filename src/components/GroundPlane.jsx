@@ -6,7 +6,6 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
   const [tilt, setTilt] = useState({ beta: 0, gamma: 0 }); 
   
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
 
   useEffect(() => {
     if (hardwareTrigger > 0) requestHardwareAccess();
@@ -48,19 +47,20 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
     }
   }, [isCameraLive, mediaStream]);
 
-  // BRUTE FORCE CAPTURE LOGIC
+  // IN-MEMORY CAPTURE FIX: Bypasses hidden DOM restrictions
   const captureFrame = () => {
     const video = videoRef.current;
-    const canvas = canvasRef.current;
-    
-    if (video && canvas) {
-      // Force dimensions to prevent 0x0 silent crashes
-      canvas.width = video.videoWidth || video.clientWidth || 1080;
-      canvas.height = video.videoHeight || video.clientHeight || 1920;
+    if (video) {
+      // Generate canvas buffer entirely in memory
+      const memoryCanvas = document.createElement('canvas');
+      // Force dimensions to native video resolution or fallback to viewport
+      memoryCanvas.width = video.videoWidth || video.clientWidth || window.innerWidth;
+      memoryCanvas.height = video.videoHeight || video.clientHeight || window.innerHeight;
       
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      setGroundImage(canvas.toDataURL('image/png'));
+      const ctx = memoryCanvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, memoryCanvas.width, memoryCanvas.height);
+      
+      setGroundImage(memoryCanvas.toDataURL('image/png'));
       stopCamera();
     }
   };
@@ -86,10 +86,12 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
   return (
     <div className="ground-plane-container relative w-full h-full bg-[#111] overflow-hidden flex items-center justify-center">
       
+      {/* ART PLANE (z-40) */}
       <div className="absolute inset-0 z-40 pointer-events-none">
         {children}
       </div>
 
+      {/* LIVE LENS FEED */}
       {isCameraLive && (
         <div className="absolute inset-0 z-20">
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
@@ -107,6 +109,7 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
                 <div className={`absolute h-32 w-[1px] ${isLevel ? 'bg-green-400/80' : 'bg-cyan-400/30'}`} />
               </div>
 
+              {/* ELEVATED CAPTURE BUTTON */}
               <button 
                 onClick={captureFrame}
                 className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-white text-black font-mono font-bold px-8 py-3 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.8)] active:scale-95 transition-transform z-50 pointer-events-auto"
@@ -118,6 +121,7 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
         </div>
       )}
 
+      {/* FROZEN BACKGROUND RASTER */}
       {groundImage && (
         <div 
           className="absolute inset-0 origin-center transition-transform duration-75 bg-black z-20 pointer-events-none"
@@ -130,16 +134,16 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
         />
       )}
 
+      {/* PURGE BUTTON: Repositioned to sit directly beneath Reset Plane (top-16) */}
       {!isPitchMode && (groundImage || isCameraLive) && (
         <button 
           onClick={handlePurge}
-          className="absolute top-4 left-36 z-50 bg-black/80 border border-red-500 text-red-500 px-3 py-2 text-xs font-mono rounded hover:bg-red-900 transition-colors pointer-events-auto shadow-[0_0_10px_rgba(255,0,0,0.3)] active:scale-95"
+          className="absolute top-16 left-4 z-50 bg-black/80 border border-red-500 text-red-500 px-3 py-2 text-xs font-mono rounded hover:bg-red-900 transition-colors pointer-events-auto shadow-[0_0_10px_rgba(255,0,0,0.3)] active:scale-95"
         >
           [ PURGE LENS ]
         </button>
       )}
 
-      <canvas ref={canvasRef} className="hidden" />
     </div>
   );
 }
