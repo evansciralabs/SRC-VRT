@@ -1,15 +1,12 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState } from 'react';
 import html2canvas from 'html2canvas';
 import GroundPlane from './components/GroundPlane';
 import ArtPlane from './components/ArtPlane';
 
-// VΞILPØINT SANITIZER: Strips executable script tags before rendering
-const sanitizeMarkup = (rawHtml) => {
-  if (!rawHtml) return '';
-  // Strip <script> blocks and inline onload/onerror handlers
-  let clean = rawHtml.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  clean = clean.replace(/ on\w+="[^"]*"/g, '');
-  return clean;
+// VΞILPØINT SANITIZER: Precise Regex Extraction
+const extractRegex = (text, regex) => {
+  const match = text.match(regex);
+  return match ? (match[1] || match[0]) : null;
 };
 
 export default function App() {
@@ -21,8 +18,8 @@ export default function App() {
   const [hardwareTrigger, setHardwareTrigger] = useState(0); 
   const [groundImage, setGroundImage] = useState(null);      
   
-  // Code Payload States
-  const [payloadMarkup, setPayloadMarkup] = useState([]);
+  // Payload States (Objects containing { id, css, svg })
+  const [payloads, setPayloads] = useState([]);
   const [activePayloadIdx, setActivePayloadIdx] = useState(0);
 
   // --- SMART INGESTION ENGINE ---
@@ -31,44 +28,57 @@ export default function App() {
     
     for (const file of files) {
       if (file.type.startsWith('image/')) {
-        // Route raster images to the GroundPlane
         setGroundImage(URL.createObjectURL(file));
       } 
       else if (file.name.endsWith('.srcd')) {
-        // Parse .srcd for HTML/CSS/SVG payloads
         try {
           const text = await file.text();
           const json = JSON.parse(text);
-          let extractedCodes = [];
+          let extractedPayloads = [];
           
-          // Deep scan SRC-D2 schema for markup data
-          const scanForCode = (obj) => {
+          // Deep scan SRC-D2 schema for scratchpads
+          const scanForCode = (obj, labelPrefix = "FILE") => {
             if (obj && typeof obj === 'object') {
-              if (obj.main && typeof obj.main === 'string') extractedCodes.push(obj.main);
-              if (obj.code && typeof obj.code === 'string') extractedCodes.push(obj.code);
-              if (obj.snippet && typeof obj.snippet === 'string') extractedCodes.push(obj.snippet);
-              // Grab attachment content if it's not a base64 image
-              if (obj.content && typeof obj.content === 'string' && !obj.content.startsWith('data:image')) {
-                extractedCodes.push(obj.content);
+              if (obj.scratchpad) {
+                Object.keys(obj.scratchpad).forEach(tab => {
+                  const rawString = obj.scratchpad[tab];
+                  
+                  [span_5](start_span)// Strict Veilpoint extraction[span_5](end_span)
+                  const safeCSS = extractRegex(rawString, /<style>([\s\S]*?)<\/style>/i);
+                  const safeSVG = extractRegex(rawString, /<svg[\s\S]*?<\/svg>/i);
+                  
+                  if (safeCSS || safeSVG) {
+                    extractedPayloads.push({
+                      id: `${labelPrefix}-${tab}`.toUpperCase(),
+                      css: safeCSS || '',
+                      svg: safeSVG || ''
+                    });
+                  }
+                });
               }
-              Object.values(obj).forEach(scanForCode);
-            } else if (Array.isArray(obj)) {
-              obj.forEach(scanForCode);
+              // Recursively scan attachments
+              if (obj.attachments && Array.isArray(obj.attachments)) {
+                 obj.attachments.forEach(att => {
+                    try {
+                      const content = typeof att.content === 'string' ? JSON.parse(att.content) : att.content;
+                      scanForCode(content, att.label || "ATTACH");
+                    } catch(e) {} // Ignore non-JSON attachments
+                 });
+              } else if (Array.isArray(obj)) {
+                 obj.forEach(item => scanForCode(item, labelPrefix));
+              } else {
+                 Object.values(obj).forEach(val => scanForCode(val, labelPrefix));
+              }
             }
           };
           
-          scanForCode(json);
-          
-          // Filter out empty strings and sanitize
-          const cleanCodes = [...new Set(extractedCodes)]
-            .filter(code => code.trim().length > 0)
-            .map(sanitizeMarkup);
+          scanForCode(json, file.name.split('_')[0]);
 
-          if (cleanCodes.length > 0) {
-            setPayloadMarkup(cleanCodes);
+          if (extractedPayloads.length > 0) {
+            setPayloads(extractedPayloads);
             setActivePayloadIdx(0);
           } else {
-            console.warn("No coded design assets found in .srcd payload.");
+            console.warn("No visual assets found in .srcd payload.");
           }
         } catch (err) {
           console.error("Failed to parse .srcd payload:", err);
@@ -139,24 +149,23 @@ export default function App() {
           >
             <ArtPlane isPitchMode={isPitchMode}>
               
-              {/* VΞILPØINT SECURE RENDER ZONE */}
-              {payloadMarkup.length > 0 ? (
-                <div className="relative w-full h-full flex flex-col pointer-events-auto">
+              {/* NATIVE RENDER ZONE */}
+              {payloads.length > 0 ? (
+                <div className="relative w-full h-full flex flex-col pointer-events-none items-center justify-center">
                   
-                  {/* The Sandboxed Iframe */}
-                  <iframe 
-                    srcDoc={payloadMarkup[activePayloadIdx]}
-                    sandbox="" /* Max Security: Blocks all script execution */
-                    className="w-full h-full border-none pointer-events-none bg-transparent"
-                    title="VRT Payload"
+                  [span_6](start_span){/* Injecting CSS and SVG natively[span_6](end_span) */}
+                  <style dangerouslySetInnerHTML={{ __html: payloads[activePayloadIdx].css }} />
+                  <div 
+                    className="w-full h-full flex items-center justify-center [&>svg]:max-w-full [&>svg]:max-h-full" 
+                    dangerouslySetInnerHTML={{ __html: payloads[activePayloadIdx].svg }} 
                   />
                   
-                  {/* The Thumb Carousel */}
-                  {payloadMarkup.length > 1 && !isPitchMode && (
-                    <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-black/90 px-4 py-1 border border-cyan-500/50 rounded-full z-50">
-                      <button onClick={(e) => { e.stopPropagation(); setActivePayloadIdx(p => (p > 0 ? p - 1 : payloadMarkup.length - 1)); }} className="text-cyan-400 hover:text-white font-bold">{'<'}</button>
-                      <span className="text-xs text-cyan-400 font-mono whitespace-nowrap">{activePayloadIdx + 1} / {payloadMarkup.length}</span>
-                      <button onClick={(e) => { e.stopPropagation(); setActivePayloadIdx(p => (p < payloadMarkup.length - 1 ? p + 1 : 0)); }} className="text-cyan-400 hover:text-white font-bold">{'>'}</button>
+                  {/* Thumb Carousel */}
+                  {payloads.length > 1 && !isPitchMode && (
+                    <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-[#112222]/90 px-4 py-1 border border-cyan-500/50 rounded-full z-50 pointer-events-auto shadow-[0_0_10px_rgba(0,255,204,0.3)]">
+                      <button onClick={(e) => { e.stopPropagation(); setActivePayloadIdx(p => (p > 0 ? p - 1 : payloads.length - 1)); }} className="text-cyan-400 hover:text-white font-bold p-2 active:scale-90">{'<'}</button>
+                      <span className="text-[10px] text-cyan-400 font-mono whitespace-nowrap tracking-widest">{payloads[activePayloadIdx].id}</span>
+                      <button onClick={(e) => { e.stopPropagation(); setActivePayloadIdx(p => (p < payloads.length - 1 ? p + 1 : 0)); }} className="text-cyan-400 hover:text-white font-bold p-2 active:scale-90">{'>'}</button>
                     </div>
                   )}
                 </div>
