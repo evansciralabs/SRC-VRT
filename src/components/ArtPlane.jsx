@@ -17,6 +17,7 @@ const getCenteredCoordinates = () => {
 export default function ArtPlane({ children, isPitchMode, isActive, clearPayload }) {
   const [corners, setCorners] = useState(getCenteredCoordinates());
   const [activeCorner, setActiveCorner] = useState(null);
+  const [dragStart, setDragStart] = useState(null); 
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -29,20 +30,41 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
     if (isPitchMode || !isActive) return;
     e.stopPropagation();
     setActiveCorner(index);
+    if (index === 'center') {
+      setDragStart({ x: e.clientX, y: e.clientY, initialCorners: [...corners] });
+    }
   };
 
   const handlePointerMove = (e) => {
     if (activeCorner === null || !containerRef.current || isPitchMode || !isActive) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const newCorners = [...corners];
-    newCorners[activeCorner] = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    setCorners(newCorners);
+    
+    // OMNI-DIRECTIONAL MOVEMENT
+    if (activeCorner === 'center' && dragStart) {
+      const dx = e.clientX - dragStart.x;
+      const dy = e.clientY - dragStart.y;
+      const newCorners = dragStart.initialCorners.map(c => ({ x: c.x + dx, y: c.y + dy }));
+      setCorners(newCorners);
+    } 
+    // CORNER PERSPECTIVE WARPING
+    else if (typeof activeCorner === 'number') {
+      const rect = containerRef.current.getBoundingClientRect();
+      const newCorners = [...corners];
+      newCorners[activeCorner] = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      setCorners(newCorners);
+    }
   };
 
-  const handlePointerUp = () => setActiveCorner(null);
+  const handlePointerUp = () => {
+    setActiveCorner(null);
+    setDragStart(null);
+  };
+  
   const resetPlane = () => setCorners(getCenteredCoordinates());
 
   const transformMatrix = solveHomography(corners) || 'matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)';
+
+  const centerX = corners.reduce((sum, c) => sum + c.x, 0) / 4;
+  const centerY = corners.reduce((sum, c) => sum + c.y, 0) / 4;
 
   if (!isActive) {
     return <div className="absolute inset-0 pointer-events-none z-40">{children}</div>;
@@ -58,22 +80,12 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
     >
       {!isPitchMode && (
         <div className="absolute top-16 left-4 z-50 flex items-center gap-2 pointer-events-auto">
-          {/* CORRECTED: Hostile Red Purge Trigger */}
-          <button 
-            onClick={clearPayload} 
-            className="w-8 h-8 flex items-center justify-center bg-black/80 border border-red-500 text-red-500 font-bold rounded hover:bg-red-900 shadow-[0_0_10px_rgba(255,0,0,0.3)] active:scale-95 transition-colors"
-          >
-            ✕
-          </button>
-          <button 
-            onClick={resetPlane}
-            className="px-3 h-8 bg-[#112222]/90 border border-cyan-400 text-cyan-400 text-xs font-mono rounded hover:bg-cyan-900 shadow-[0_0_10px_rgba(0,255,204,0.3)] active:scale-95 transition-colors"
-          >
-            [ RESET PLANE ]
-          </button>
+          <button onClick={clearPayload} className="w-8 h-8 flex items-center justify-center bg-black/80 border border-red-500 text-red-500 font-bold rounded hover:bg-red-900 shadow-[0_0_10px_rgba(255,0,0,0.3)] active:scale-95 transition-colors">✕</button>
+          <button onClick={resetPlane} className="px-3 h-8 bg-[#112222]/90 border border-cyan-400 text-cyan-400 text-xs font-mono rounded hover:bg-cyan-900 shadow-[0_0_10px_rgba(0,255,204,0.3)] active:scale-95 transition-colors">[ RESET PLANE ]</button>
         </div>
       )}
 
+      {/* MATRIX PAYLOAD */}
       <div 
         className="absolute top-0 left-0 origin-top-left flex items-center justify-center overflow-visible"
         style={{ transform: transformMatrix, width: '240px', height: '240px', pointerEvents: 'none' }}
@@ -81,6 +93,7 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
         {children}
       </div>
 
+      {/* 4-POINT PERSPECTIVE ANCHORS */}
       {!isPitchMode && corners.map((corner, i) => (
         <div
           key={i}
@@ -89,6 +102,17 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
           style={{ left: corner.x, top: corner.y }}
         />
       ))}
+
+      {/* OMNI-DIRECTIONAL CENTER HANDLE */}
+      {!isPitchMode && (
+        <div
+          onPointerDown={(e) => handlePointerDown('center', e)}
+          className="absolute w-12 h-12 -ml-6 -mt-6 rounded-full border border-cyan-400/50 flex items-center justify-center cursor-move active:cursor-grabbing active:bg-cyan-400/20 shadow-[0_0_15px_rgba(0,255,204,0.3)] touch-none z-[60]"
+          style={{ left: centerX, top: centerY }}
+        >
+          <div className="w-2 h-2 bg-cyan-400 rounded-full" />
+        </div>
+      )}
     </div>
   );
 }
