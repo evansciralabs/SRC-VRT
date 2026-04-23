@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-export default function GroundPlane({ children }) {
+export default function GroundPlane({ children, isPitchMode }) {
   const [backgroundImage, setBackgroundImage] = useState(null);
   const [isCameraLive, setIsCameraLive] = useState(false);
   const [mediaStream, setMediaStream] = useState(null);
@@ -9,12 +9,8 @@ export default function GroundPlane({ children }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
-  // --- HARDWARE TELEMETRY ---
   const handleOrientation = (event) => {
-    setTilt({
-      beta: event.beta || 0,
-      gamma: event.gamma || 0
-    });
+    setTilt({ beta: event.beta || 0, gamma: event.gamma || 0 });
   };
 
   const requestHardwareAccess = async () => {
@@ -23,8 +19,6 @@ export default function GroundPlane({ children }) {
         const permissionState = await DeviceOrientationEvent.requestPermission();
         if (permissionState === 'granted') {
           window.addEventListener('deviceorientation', handleOrientation);
-        } else {
-          console.warn("Gyroscope access denied.");
         }
       } catch (error) {
         console.error("Gyro error:", error);
@@ -35,20 +29,16 @@ export default function GroundPlane({ children }) {
     startCamera();
   };
 
-  // --- OPTICAL SENSOR (WEBRTC) ---
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "environment" } 
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       setMediaStream(stream);
       setIsCameraLive(true);
     } catch (err) {
-      console.error("Lens init failed. Ensure HTTPS.", err);
+      console.error("Lens init failed:", err);
     }
   };
 
-  // CRITICAL FIX: Attach stream only AFTER video element renders
   useEffect(() => {
     if (isCameraLive && videoRef.current && mediaStream) {
       videoRef.current.srcObject = mediaStream;
@@ -63,7 +53,6 @@ export default function GroundPlane({ children }) {
       canvas.height = video.videoHeight;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
       setBackgroundImage(canvas.toDataURL('image/png'));
       stopCamera();
     }
@@ -78,7 +67,6 @@ export default function GroundPlane({ children }) {
     window.removeEventListener('deviceorientation', handleOrientation);
   };
 
-  // --- FALLBACK FILE INGESTION ---
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -86,7 +74,6 @@ export default function GroundPlane({ children }) {
     }
   };
 
-  // --- UI COMPUTATIONS ---
   const isLevel = Math.abs(tilt.beta) < 3 && Math.abs(tilt.gamma) < 3;
   const crosshairX = Math.min(Math.max(tilt.gamma * 2, -50), 50);
   const crosshairY = Math.min(Math.max(tilt.beta * 2, -50), 50);
@@ -94,8 +81,7 @@ export default function GroundPlane({ children }) {
   return (
     <div className="ground-plane-container relative w-full h-[80vh] bg-[#111] overflow-hidden flex items-center justify-center">
       
-      {/* 1. IDLE STATE: INGESTION CONTROLS */}
-      {!backgroundImage && !isCameraLive && (
+      {!backgroundImage && !isCameraLive && !isPitchMode && (
         <div className="absolute z-50 flex flex-col items-center gap-4">
           <button 
             onClick={requestHardwareAccess}
@@ -103,7 +89,6 @@ export default function GroundPlane({ children }) {
           >
             [ INIT LENS & GYRO ]
           </button>
-          
           <label className="text-gray-500 border border-gray-700 px-4 py-2 rounded cursor-pointer hover:bg-gray-800 transition-colors font-mono text-xs pointer-events-auto">
             FALLBACK: UPLOAD RASTER
             <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
@@ -111,44 +96,37 @@ export default function GroundPlane({ children }) {
         </div>
       )}
 
-      {/* 2. LIVE CAMERA & TELEMETRY UI */}
       {isCameraLive && (
         <div className="absolute inset-0 z-20">
-          <video 
-            ref={videoRef} 
-            autoPlay 
-            playsInline 
-            muted
-            className="w-full h-full object-cover"
-          />
+          <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
           
-          {/* Leveling Reticle */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-24 h-24 border-2 border-gray-400/50 rounded-full flex items-center justify-center relative">
-              <div 
-                className={`w-6 h-6 rounded-full transition-all duration-75 shadow-[0_0_10px_rgba(0,0,0,0.8)] ${isLevel ? 'bg-green-500 scale-125' : 'bg-red-500'}`}
-                style={{ transform: `translate(${crosshairX}px, ${crosshairY}px)` }}
-              />
-            </div>
-            <div className={`absolute w-32 h-[1px] ${isLevel ? 'bg-green-400/80' : 'bg-cyan-400/30'}`} />
-            <div className={`absolute h-32 w-[1px] ${isLevel ? 'bg-green-400/80' : 'bg-cyan-400/30'}`} />
-          </div>
-
-          {/* Capture Trigger */}
-          <button 
-            onClick={captureFrame}
-            className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white text-black font-mono font-bold px-8 py-3 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.5)] active:scale-95 transition-transform z-30 pointer-events-auto"
-          >
-            CAPTURE LOCK
-          </button>
+          {!isPitchMode && (
+            <>
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="w-24 h-24 border-2 border-gray-400/50 rounded-full flex items-center justify-center relative">
+                  <div 
+                    className={`w-6 h-6 rounded-full transition-all duration-75 shadow-[0_0_10px_rgba(0,0,0,0.8)] ${isLevel ? 'bg-green-500 scale-125' : 'bg-red-500'}`}
+                    style={{ transform: `translate(${crosshairX}px, ${crosshairY}px)` }}
+                  />
+                </div>
+                <div className={`absolute w-32 h-[1px] ${isLevel ? 'bg-green-400/80' : 'bg-cyan-400/30'}`} />
+                <div className={`absolute h-32 w-[1px] ${isLevel ? 'bg-green-400/80' : 'bg-cyan-400/30'}`} />
+              </div>
+              <button 
+                onClick={captureFrame}
+                className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white text-black font-mono font-bold px-8 py-3 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.5)] active:scale-95 transition-transform z-30 pointer-events-auto"
+              >
+                CAPTURE LOCK
+              </button>
+            </>
+          )}
         </div>
       )}
 
-      {/* 3. CAPTURED STATE: RENDER LOOP */}
       {backgroundImage && (
         <>
           <div 
-            className="absolute inset-0 origin-center transition-transform duration-75"
+            className="absolute inset-0 origin-center transition-transform duration-75 bg-black"
             style={{
               backgroundImage: `url(${backgroundImage})`,
               backgroundSize: 'contain',
@@ -156,20 +134,21 @@ export default function GroundPlane({ children }) {
               backgroundPosition: 'center'
             }}
           />
-          <button 
-            onClick={() => setBackgroundImage(null)}
-            className="absolute top-4 right-4 z-50 bg-black/60 border border-red-500 text-red-500 px-3 py-1 text-xs font-mono rounded hover:bg-red-900 transition-colors pointer-events-auto"
-          >
-            PURGE LAYER
-          </button>
+          {!isPitchMode && (
+            <button 
+              onClick={() => setBackgroundImage(null)}
+              className="absolute top-4 right-4 z-50 bg-black/60 border border-red-500 text-red-500 px-3 py-1 text-xs font-mono rounded hover:bg-red-900 transition-colors pointer-events-auto"
+            >
+              PURGE LAYER
+            </button>
+          )}
         </>
       )}
 
-      {/* Hidden canvas for extraction */}
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* The payload injection zone */}
-      <div className="absolute inset-0 z-10 pointer-events-none">
+      {/* ELEVATED PAYLOAD ZONE */}
+      <div className="absolute inset-0 z-40 pointer-events-none">
         {children}
       </div>
     </div>
