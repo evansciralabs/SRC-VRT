@@ -3,7 +3,9 @@ import React, { useState, useEffect, useRef } from 'react';
 export default function GroundPlane({ children, isPitchMode, hardwareTrigger, groundImage, setGroundImage }) {
   const [isCameraLive, setIsCameraLive] = useState(false);
   const [mediaStream, setMediaStream] = useState(null);
-  const [tilt, setTilt] = useState({ beta: 0, gamma: 0 }); 
+  
+  // Image Manipulation State
+  const [imgTransform, setImgTransform] = useState({ rotate: 0, flipX: 1, flipY: 1 });
   
   const videoRef = useRef(null);
 
@@ -11,17 +13,7 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
     if (hardwareTrigger > 0) requestHardwareAccess();
   }, [hardwareTrigger]);
 
-  const handleOrientation = (event) => setTilt({ beta: event.beta || 0, gamma: event.gamma || 0 });
-
   const requestHardwareAccess = async () => {
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-      try {
-        const permissionState = await DeviceOrientationEvent.requestPermission();
-        if (permissionState === 'granted') window.addEventListener('deviceorientation', handleOrientation);
-      } catch (error) { console.error("Gyro error:", error); }
-    } else {
-      window.addEventListener('deviceorientation', handleOrientation);
-    }
     startCamera();
   };
 
@@ -39,7 +31,6 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
     }
   }, [isCameraLive, mediaStream]);
 
-  // BRUTE FORCE CAPTURE (Fires instantly on touch down)
   const captureFrame = (e) => {
     e.stopPropagation();
     const video = videoRef.current;
@@ -52,6 +43,7 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
       ctx.drawImage(video, 0, 0, memoryCanvas.width, memoryCanvas.height);
       
       setGroundImage(memoryCanvas.toDataURL('image/png'));
+      setImgTransform({ rotate: 0, flipX: 1, flipY: 1 }); // Reset transforms on new capture
       stopCamera();
     }
   };
@@ -62,75 +54,79 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
       setMediaStream(null);
     }
     setIsCameraLive(false);
-    window.removeEventListener('deviceorientation', handleOrientation);
   };
 
   const handlePurge = () => {
     setGroundImage(null);
+    setImgTransform({ rotate: 0, flipX: 1, flipY: 1 });
     if (isCameraLive) stopCamera();
   };
 
-  const isLevel = Math.abs(tilt.beta) < 3 && Math.abs(tilt.gamma) < 3;
-  const crosshairX = Math.min(Math.max(tilt.gamma * 2, -50), 50);
-  const crosshairY = Math.min(Math.max(tilt.beta * 2, -50), 50);
+  const resetLens = () => {
+    setImgTransform({ rotate: 0, flipX: 1, flipY: 1 });
+  };
 
   return (
-    <div className="ground-plane-container relative w-full h-full bg-[#111] overflow-hidden flex items-center justify-center">
+    <div className="ground-plane-container absolute inset-0 w-full h-full bg-[#111] overflow-hidden flex items-center justify-center">
       
-      {children} {/* ArtPlane renders here */}
+      {/* RASTER / CAMERA LAYER (z-10) */}
+      <div className="absolute inset-0 z-10 flex items-center justify-center overflow-hidden">
+        {isCameraLive && !groundImage && (
+          <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+        )}
+        
+        {groundImage && (
+          <img 
+            src={groundImage} 
+            alt="Environment"
+            className="w-full h-full object-contain"
+            style={{ 
+              transform: `rotate(${imgTransform.rotate}deg) scaleX(${imgTransform.flipX}) scaleY(${imgTransform.flipY})`,
+              transition: 'transform 0.3s ease-out'
+            }} 
+          />
+        )}
+      </div>
 
-      {isCameraLive && (
-        <div className="absolute inset-0 z-20">
-          <video ref={videoRef} autoPlay playsInline muted crossOrigin="anonymous" className="w-full h-full object-cover" />
-          
-          {!isPitchMode && (
-            <>
-              {/* Gyro Reticle */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-24 h-24 border-2 border-gray-400/50 rounded-full flex items-center justify-center relative">
-                  <div 
-                    className={`w-6 h-6 rounded-full transition-all duration-75 shadow-[0_0_10px_rgba(0,0,0,0.8)] ${isLevel ? 'bg-green-500 scale-125' : 'bg-red-500'}`}
-                    style={{ transform: `translate(${crosshairX}px, ${crosshairY}px)` }}
-                  />
-                </div>
-                <div className={`absolute w-32 h-[1px] ${isLevel ? 'bg-green-400/80' : 'bg-cyan-400/30'}`} />
-                <div className={`absolute h-32 w-[1px] ${isLevel ? 'bg-green-400/80' : 'bg-cyan-400/30'}`} />
-              </div>
+      {/* ART PLANE (z-40) */}
+      <div className="absolute inset-0 z-40 pointer-events-none">
+        {children}
+      </div>
 
-              {/* ELEVATED CAPTURE BUTTON (Avoids carousel collision, fires onPointerDown) */}
-              <button 
-                onPointerDown={captureFrame}
-                className="absolute bottom-28 left-1/2 -translate-x-1/2 bg-white text-black font-mono font-bold px-8 py-3 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.8)] active:scale-95 transition-transform z-[65] pointer-events-auto"
-              >
-                CAPTURE LOCK
-              </button>
-            </>
+      {/* UI CONTROLS (Hide during export) */}
+      {!isPitchMode && (
+        <>
+          {/* TOP LEFT: PURGE & RESET */}
+          {(groundImage || isCameraLive) && (
+            <div className="absolute top-4 left-4 z-50 flex items-center gap-2 pointer-events-auto">
+              <button onClick={handlePurge} className="w-8 h-8 flex items-center justify-center bg-black/80 border border-red-500 text-red-500 font-bold rounded hover:bg-red-900 shadow-[0_0_10px_rgba(255,0,0,0.3)] active:scale-95">✕</button>
+              {groundImage && (
+                <button onClick={resetLens} className="px-3 h-8 bg-black/80 border border-cyan-500 text-cyan-400 text-xs font-mono rounded hover:bg-cyan-900 shadow-[0_0_10px_rgba(0,255,255,0.3)] active:scale-95">[ RESET LENS ]</button>
+              )}
+            </div>
           )}
-        </div>
-      )}
 
-      {groundImage && (
-        <div 
-          className="absolute inset-0 origin-center transition-transform duration-75 bg-black z-20 pointer-events-none"
-          style={{
-            backgroundImage: `url(${groundImage})`,
-            backgroundSize: 'contain',
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'center'
-          }}
-        />
-      )}
+          {/* LEFT MIDDLE: ORIENTATION CONTROLS */}
+          {groundImage && (
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-50 pointer-events-auto">
+              <button onClick={() => setImgTransform(p => ({ ...p, rotate: p.rotate - 90 }))} className="w-8 h-8 bg-black/80 border border-gray-500 text-gray-300 rounded text-xs hover:bg-gray-800 shadow-[0_0_10px_rgba(255,255,255,0.1)]">↶</button>
+              <button onClick={() => setImgTransform(p => ({ ...p, rotate: p.rotate + 90 }))} className="w-8 h-8 bg-black/80 border border-gray-500 text-gray-300 rounded text-xs hover:bg-gray-800 shadow-[0_0_10px_rgba(255,255,255,0.1)]">↷</button>
+              <button onClick={() => setImgTransform(p => ({ ...p, flipX: p.flipX * -1 }))} className="w-8 h-8 bg-black/80 border border-gray-500 text-gray-300 rounded text-xs hover:bg-gray-800 font-bold shadow-[0_0_10px_rgba(255,255,255,0.1)]">↔</button>
+              <button onClick={() => setImgTransform(p => ({ ...p, flipY: p.flipY * -1 }))} className="w-8 h-8 bg-black/80 border border-gray-500 text-gray-300 rounded text-xs hover:bg-gray-800 font-bold shadow-[0_0_10px_rgba(255,255,255,0.1)]">↕</button>
+            </div>
+          )}
 
-      {/* PURGE BUTTON: Re-aligned to top-20 to clear Reset Plane by 1rem */}
-      {!isPitchMode && (groundImage || isCameraLive) && (
-        <button 
-          onClick={handlePurge}
-          className="absolute top-20 left-4 z-50 bg-black/80 border border-red-500 text-red-500 px-3 py-2 text-xs font-mono rounded hover:bg-red-900 transition-colors pointer-events-auto shadow-[0_0_10px_rgba(255,0,0,0.3)] active:scale-95"
-        >
-          [ PURGE LENS ]
-        </button>
+          {/* CAPTURE BUTTON */}
+          {isCameraLive && (
+            <button 
+              onPointerDown={captureFrame}
+              className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-white text-black font-mono font-bold px-8 py-3 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.8)] active:scale-95 z-50 pointer-events-auto"
+            >
+              CAPTURE LOCK
+            </button>
+          )}
+        </>
       )}
-
     </div>
   );
 }
