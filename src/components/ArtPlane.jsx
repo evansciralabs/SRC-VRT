@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import solveHomography from '../utils/mathUtils';  // Ensure this path matches your setup
+import solveHomography from '../utils/mathUtils'; 
 
 // Calculate true center based on the device window
 const getCenteredCoordinates = () => {
@@ -74,7 +74,7 @@ export default function ArtPlane({ children }) {
 
       {/* THE TRANSFORMED PAYLOAD */}
       <div 
-        className="absolute top-0 left-0 origin-top-left border border-cyan-500/50 shadow-[0_0_20px_rgba(0,255,204,0.1)]"
+        className="absolute top-0 left-0 origin-top-left border border-cyan-500/80 bg-black/40 flex items-center justify-center [&>*]:max-w-full [&>*]:max-h-full overflow-hidden shadow-[0_0_20px_rgba(0,255,204,0.2)]"
         style={{
           transform: transformMatrix,
           width: '240px', // Matches the 'size * 2' in getCenteredCoordinates
