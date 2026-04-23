@@ -14,7 +14,7 @@ const getCenteredCoordinates = () => {
   ];
 };
 
-export default function ArtPlane({ children, isPitchMode, isActive, clearPayload }) {
+export default function ArtPlane({ children, isPitchMode, isActive, clearPayload, isAmbi, themeCfg }) {
   const [corners, setCorners] = useState(getCenteredCoordinates());
   const [activeCorner, setActiveCorner] = useState(null);
   const [dragStart, setDragStart] = useState(null); 
@@ -38,14 +38,12 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
   const handlePointerMove = (e) => {
     if (activeCorner === null || !containerRef.current || isPitchMode || !isActive) return;
     
-    // OMNI-DIRECTIONAL MOVEMENT
     if (activeCorner === 'center' && dragStart) {
       const dx = e.clientX - dragStart.x;
       const dy = e.clientY - dragStart.y;
       const newCorners = dragStart.initialCorners.map(c => ({ x: c.x + dx, y: c.y + dy }));
       setCorners(newCorners);
     } 
-    // CORNER PERSPECTIVE WARPING
     else if (typeof activeCorner === 'number') {
       const rect = containerRef.current.getBoundingClientRect();
       const newCorners = [...corners];
@@ -58,8 +56,6 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
     setActiveCorner(null);
     setDragStart(null);
   };
-  
-  const resetPlane = () => setCorners(getCenteredCoordinates());
 
   const transformMatrix = solveHomography(corners) || 'matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)';
 
@@ -79,13 +75,12 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
       onPointerLeave={handlePointerUp}
     >
       {!isPitchMode && (
-        <div className="absolute top-16 left-4 z-50 flex items-center gap-2 pointer-events-auto">
-          <button onClick={clearPayload} className="w-8 h-8 flex items-center justify-center bg-black/80 border border-red-500 text-red-500 font-bold rounded hover:bg-red-900 shadow-[0_0_10px_rgba(255,0,0,0.3)] active:scale-95 transition-colors">✕</button>
-          <button onClick={resetPlane} className="px-3 h-8 bg-[#112222]/90 border border-cyan-400 text-cyan-400 text-xs font-mono rounded hover:bg-cyan-900 shadow-[0_0_10px_rgba(0,255,204,0.3)] active:scale-95 transition-colors">[ RESET PLANE ]</button>
+        <div className={`absolute top-16 z-50 flex items-center gap-2 pointer-events-auto transition-all duration-300 ${isAmbi ? 'right-4 flex-row-reverse' : 'left-4'}`}>
+          <button onClick={clearPayload} className={`w-8 h-8 flex items-center justify-center font-bold rounded active:scale-95 ${themeCfg.btnDanger}`}>✕</button>
+          <button onClick={() => setCorners(getCenteredCoordinates())} className={`px-3 h-8 text-xs font-mono rounded active:scale-95 ${themeCfg.btnDefault}`}>[ RESET PLANE ]</button>
         </div>
       )}
 
-      {/* MATRIX PAYLOAD */}
       <div 
         className="absolute top-0 left-0 origin-top-left flex items-center justify-center overflow-visible"
         style={{ transform: transformMatrix, width: '240px', height: '240px', pointerEvents: 'none' }}
@@ -93,24 +88,22 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
         {children}
       </div>
 
-      {/* 4-POINT PERSPECTIVE ANCHORS */}
       {!isPitchMode && corners.map((corner, i) => (
         <div
           key={i}
           onPointerDown={(e) => handlePointerDown(i, e)}
-          className="absolute w-8 h-8 -ml-4 -mt-4 rounded-full border-2 border-cyan-400 bg-black/50 cursor-grab active:cursor-grabbing active:bg-cyan-400/50 shadow-[0_0_10px_rgba(0,255,204,0.5)] touch-none z-[60]"
+          className={`absolute w-8 h-8 -ml-4 -mt-4 rounded-full border-2 cursor-grab active:cursor-grabbing touch-none z-[60] transition-colors duration-300 ${themeCfg.anchor} ${themeCfg.anchorActive}`}
           style={{ left: corner.x, top: corner.y }}
         />
       ))}
 
-      {/* OMNI-DIRECTIONAL CENTER HANDLE */}
       {!isPitchMode && (
         <div
           onPointerDown={(e) => handlePointerDown('center', e)}
-          className="absolute w-12 h-12 -ml-6 -mt-6 rounded-full border border-cyan-400/50 flex items-center justify-center cursor-move active:cursor-grabbing active:bg-cyan-400/20 shadow-[0_0_15px_rgba(0,255,204,0.3)] touch-none z-[60]"
+          className={`absolute w-12 h-12 -ml-6 -mt-6 rounded-full border flex items-center justify-center cursor-move active:cursor-grabbing touch-none z-[60] transition-colors duration-300 ${themeCfg.anchor} ${themeCfg.anchorActive}`}
           style={{ left: centerX, top: centerY }}
         >
-          <div className="w-2 h-2 bg-cyan-400 rounded-full" />
+          <div className={`w-2 h-2 rounded-full ${themeCfg.appBg === 'bg-[#f4f4f5]' ? 'bg-blue-500' : 'bg-cyan-400'}`} />
         </div>
       )}
     </div>
