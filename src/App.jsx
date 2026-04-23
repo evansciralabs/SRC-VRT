@@ -3,28 +3,30 @@ import * as htmlToImage from 'html-to-image';
 import GroundPlane from './components/GroundPlane';
 import ArtPlane from './components/ArtPlane';
 
-// VΞILPØINT SANITIZER: Strict Visual-Only Gate with Code-Kill Switch
+// VΞILPØINT SANITIZER: Precision Scalpel for Design Extraction
 const extractVeilpointPayload = (rawString) => {
   if (!rawString || typeof rawString !== 'string') return null;
 
-  // STRICT CODE-KILL SWITCH: Incinerate any raw source code files
-  if (
-    rawString.includes('import React') || 
-    rawString.includes('export default') || 
-    rawString.includes('<!DOCTYPE html>') ||
-    rawString.includes('function App()')
-  ) {
-    return null; 
-  }
+  // 1. Extract all CSS blocks
+  const cssMatch = rawString.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
+  let css = cssMatch ? cssMatch.map(m => m.replace(/<\/?style[^>]*>/gi, '')).join('\n') : '';
 
-  const cssMatch = rawString.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-  const css = cssMatch ? cssMatch[1] : '';
+  // Force transparency on incoming structural wrappers
+  css += `\n body, main, div#root, .calibration-grid { background-color: transparent !important; background: transparent !important; }`;
 
-  let html = rawString.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  html = html.replace(/ on\w+="[^"]*"/g, ''); 
-  html = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ''); 
+  // 2. Precision Extraction: Dissolve document wrappers & kill logic, preserve layout
+  let html = rawString
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Kill executable scripts
+    .replace(/ on\w+="[^"]*"/g, '')                                     // Kill inline JS events
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')                     // Remove extracted style blocks
+    .replace(/<!DOCTYPE html>/gi, '')                                   // Dissolve document declarations
+    .replace(/<\/?html[^>]*>/gi, '')                                    // Dissolve html tags
+    .replace(/<\/?head[^>]*>/gi, '')                                    // Dissolve head tags
+    .replace(/<\/?body[^>]*>/gi, '')                                    // Dissolve body tags
+    .replace(/import React.*/g, '')                                     // Dissolve React imports
+    .replace(/export default.*/g, '');                                  // Dissolve React exports
 
-  // Must contain CSS, an SVG, or structural classes to pass the gate
+  // 3. Absolute Visual Gate: If no CSS, no SVGs, and no structural classes remain, it is dead text.
   if (!css.trim() && !html.includes('<svg') && !html.includes('class=')) return null;
 
   return { css, html: html.trim() };
@@ -40,6 +42,7 @@ export default function App() {
   const [payloads, setPayloads] = useState([]);
   const [activePayloadIdx, setActivePayloadIdx] = useState(0);
 
+  // OMNI-PARSER: Intelligent Traversal and Labeling
   const handleSmartImport = async (event) => {
     const files = Array.from(event.target.files);
     let extractedPayloads = [];
@@ -53,15 +56,18 @@ export default function App() {
           const text = await file.text();
           const json = JSON.parse(text);
           
-          const recursiveSearch = (obj, pathLabel = "DESIGN") => {
+          const recursiveSearch = (obj, parentLabel = null) => {
             if (!obj || typeof obj !== 'object') return;
             
+            // Extract from scratchpads
             if (obj.scratchpad) {
               Object.keys(obj.scratchpad).forEach(tabKey => {
                 const payload = extractVeilpointPayload(obj.scratchpad[tabKey]);
                 if (payload) {
+                  // LABELING LOGIC: If parent tooltip exists, use it. Otherwise, use tab name.
+                  const displayName = parentLabel ? parentLabel : tabKey.toUpperCase();
                   extractedPayloads.push({
-                    id: `${pathLabel} [${tabKey}]`.toUpperCase(),
+                    id: displayName,
                     css: payload.css,
                     html: payload.html
                   });
@@ -69,19 +75,33 @@ export default function App() {
               });
             }
             
+            // Dig deeper into the tree
             Object.keys(obj).forEach(key => {
               if (key === 'scratchpad') return; 
+              
               let nextObj = obj[key];
+              let nextLabel = parentLabel;
+
+              // Track tooltip labels if parsing attachments
+              if (obj.attachments && Array.isArray(obj.attachments) && obj.attachments.includes(nextObj)) {
+                nextLabel = nextObj.label || nextObj.filename || "ATTACHMENT";
+              } else if (nextObj && typeof nextObj === 'object' && nextObj.label) {
+                nextLabel = nextObj.label;
+              }
+
               if (typeof nextObj === 'string' && nextObj.trim().startsWith('{')) {
                 try { nextObj = JSON.parse(nextObj); } catch(e) {}
               }
+              
               if (typeof nextObj === 'object') {
-                recursiveSearch(nextObj, obj.label || obj.title || pathLabel);
+                recursiveSearch(nextObj, nextLabel);
               }
             });
           };
           
-          recursiveSearch(json);
+          // Initiate search with a null parent label to allow scratchpad tab defaults
+          recursiveSearch(json, null);
+          
         } catch (err) {
           console.error("Failed to parse .srcd payload:", err);
         }
@@ -95,17 +115,13 @@ export default function App() {
     event.target.value = ''; 
   };
 
-  // NEW PIXEL-PERFECT EXPORT ENGINE
   const executeRenderPipeline = async () => {
     if (!exportRef.current) return;
     setIsRendering(true);
     setIsPitchMode(true);
-    
-    // Wait for the Virtual DOM to strip the UI layers
     await new Promise(resolve => setTimeout(resolve, 150)); 
 
     try {
-      // html-to-image preserves 3D matrices by using SVG embedding
       const dataUrl = await htmlToImage.toPng(exportRef.current, {
         quality: 1.0,
         pixelRatio: 2,
@@ -154,7 +170,7 @@ export default function App() {
               {hasActivePayload ? (
                 <div className="w-full h-full flex items-center justify-center pointer-events-none">
                   <style dangerouslySetInnerHTML={{ __html: payloads[activePayloadIdx].css }} />
-                  <div className="[&>svg]:max-w-full [&>svg]:max-h-full" dangerouslySetInnerHTML={{ __html: payloads[activePayloadIdx].html }} />
+                  <div className="[&>svg]:max-w-full [&>svg]:max-h-full w-full h-full flex items-center justify-center" dangerouslySetInnerHTML={{ __html: payloads[activePayloadIdx].html }} />
                 </div>
               ) : null}
             </ArtPlane>
