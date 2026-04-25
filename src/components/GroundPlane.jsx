@@ -6,7 +6,6 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
   const [imgTransform, setImgTransform] = useState({ rotate: 0, flipX: 1, flipY: 1 });
   const videoRef = useRef(null);
 
-  // UPGRADE 3: Gyroscope Sensor State
   const [tilt, setTilt] = useState({ beta: 0, gamma: 0 });
   const [hasGyroPermission, setHasGyroPermission] = useState(false);
 
@@ -15,14 +14,16 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
   }, [hardwareTrigger]);
 
   const requestHardwareAccess = async () => {
-    // Request Gyro Permission alongside Camera Init
+    setGroundImage(null);
+    setImgTransform({ rotate: 0, flipX: 1, flipY: 1 });
+
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       try {
         const perm = await DeviceOrientationEvent.requestPermission();
         if (perm === 'granted') setHasGyroPermission(true);
       } catch (err) { console.error("Gyro perm failed", err); }
     } else {
-      setHasGyroPermission(true); // Auto-grant for non-iOS
+      setHasGyroPermission(true); 
     }
     startCamera();
   };
@@ -41,7 +42,6 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
     }
   }, [isCameraLive, mediaStream]);
 
-  // Activate Sensor Feed only when camera is live
   useEffect(() => {
     if (isCameraLive && hasGyroPermission) {
       const handleOrientation = (e) => setTilt({ beta: e.beta || 0, gamma: e.gamma || 0 });
@@ -50,7 +50,6 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
     }
   }, [isCameraLive, hasGyroPermission]);
 
-  // Calibration Definition (Within 2 degrees of absolute zero)
   const isLevel = Math.abs(tilt.beta) < 2 && Math.abs(tilt.gamma) < 2;
 
   const captureFrame = (e) => {
@@ -90,7 +89,6 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
           <>
             <video ref={videoRef} autoPlay playsInline muted crossOrigin="anonymous" className="w-full h-full object-cover" />
             
-            {/* INJECTED GYRO RETICLE OVERLAY */}
             {hasGyroPermission && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
                 <div style={{
@@ -146,7 +144,6 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
             </div>
           )}
 
-          {/* INJECTED SENSOR OVERRIDE ON CAPTURE BUTTON */}
           {isCameraLive && (
             <button 
               onPointerDown={(isLevel || !hasGyroPermission) ? captureFrame : null} 
