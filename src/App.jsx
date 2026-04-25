@@ -218,7 +218,16 @@ export default function App() {
         <div ref={exportRef} className={`w-full h-full relative overflow-hidden transition-colors duration-300 ${theme === 'daylight' ? 'bg-[#ffffff]' : 'bg-[#0a0a0a]'}`}>
           
           <GroundPlane isPitchMode={isPitchMode} hardwareTrigger={hardwareTrigger} groundImage={groundImage} setGroundImage={setGroundImage} isAmbi={isAmbi} theme={theme} themeCfg={themeCfg}>
-            <ArtPlane isPitchMode={isPitchMode} isActive={hasActivePayload} clearPayload={clearArtPlane} isAmbi={isAmbi} themeCfg={themeCfg}>
+            <ArtPlane 
+              isPitchMode={isPitchMode} 
+              isActive={hasActivePayload} 
+              clearPayload={clearArtPlane} 
+              isAmbi={isAmbi} 
+              themeCfg={themeCfg}
+              // WIRE CYCLER STATE TO ARTPLANE
+              onCyclePrev={payloads.length > 1 ? () => setActivePayloadIdx(p => (p > 0 ? p - 1 : payloads.length - 1)) : undefined}
+              onCycleNext={payloads.length > 1 ? () => setActivePayloadIdx(p => (p < payloads.length - 1 ? p + 1 : 0)) : undefined}
+            >
               {hasActivePayload ? (
                 <div className="w-full h-full flex items-center justify-center pointer-events-none">
                   <style dangerouslySetInnerHTML={{ __html: payloads[activePayloadIdx].css }} />
@@ -231,12 +240,12 @@ export default function App() {
         </div>
       </main>
 
-      {/* ELEVATED THUMB CAROUSEL */}
+      {/* ACTIVE PAYLOAD READOUT (Replaces the old Carousel buttons) */}
       {payloads.length > 0 && !isPitchMode && (
-        <div className={`absolute bottom-32 left-1/2 -translate-x-1/2 flex items-center gap-4 px-5 py-2 rounded-full z-[70] pointer-events-auto transition-colors duration-300 ${themeCfg.panel}`}>
-          <button onClick={() => setActivePayloadIdx(p => (p > 0 ? p - 1 : payloads.length - 1))} className="hover:opacity-70 font-bold px-3 py-1 text-xl active:scale-90">{'<'}</button>
-          <span className="text-[11px] font-mono whitespace-nowrap tracking-widest max-w-[150px] overflow-hidden text-ellipsis">{payloads[activePayloadIdx].id}</span>
-          <button onClick={() => setActivePayloadIdx(p => (p < payloads.length - 1 ? p + 1 : 0))} className="hover:opacity-70 font-bold px-3 py-1 text-xl active:scale-90">{'>'}</button>
+        <div className="absolute bottom-40 left-1/2 -translate-x-1/2 z-[70] pointer-events-none text-center w-full max-w-[280px]">
+          <span className={`px-4 py-1 text-[10px] font-mono font-bold tracking-widest border-b rounded-full shadow-lg ${themeCfg.appBg === 'bg-[#f4f4f5]' ? 'text-slate-500 border-slate-300 bg-white/50' : 'text-cyan-400 border-cyan-500/30 bg-black/50 backdrop-blur-sm'}`}>
+            NODE: {payloads[activePayloadIdx].id}
+          </span>
         </div>
       )}
     </div>
