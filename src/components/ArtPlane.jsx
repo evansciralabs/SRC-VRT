@@ -68,6 +68,11 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
     setDragStart(null);
   };
 
+  const handleReset = () => {
+    setCorners(getCenteredCoordinates());
+    setPayloadScale(1);
+  };
+
   const transformMatrix = solveHomography(corners) || 'matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)';
 
   const centerX = corners.reduce((sum, c) => sum + c.x, 0) / 4;
@@ -85,18 +90,47 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
     >
+      {/* Global CSS injection for sleek hardware slider aesthetics */}
+      <style>{`
+        .cyber-slider { -webkit-appearance: none; appearance: none; background: transparent; }
+        .cyber-slider::-webkit-slider-thumb {
+          -webkit-appearance: none; appearance: none;
+          width: 8px; height: 18px;
+          background: #06b6d4; border: 1px solid #cffafe;
+          cursor: pointer; border-radius: 1px;
+          box-shadow: 0 0 10px #06b6d4;
+          margin-top: -7px;
+        }
+        .cyber-slider::-webkit-slider-runnable-track {
+          width: 100%; height: 4px;
+          cursor: pointer; background: rgba(6, 182, 212, 0.2);
+          border-radius: 2px; border: 1px solid rgba(6, 182, 212, 0.4);
+        }
+        .cyber-slider::-moz-range-thumb {
+          width: 8px; height: 18px;
+          background: #06b6d4; border: 1px solid #cffafe;
+          cursor: pointer; border-radius: 1px;
+          box-shadow: 0 0 10px #06b6d4;
+        }
+      `}</style>
+
+      {/* Top Header Controls */}
       {!isPitchMode && (
         <div className={`absolute top-16 z-50 flex items-center gap-4 pointer-events-auto transition-all duration-300 ${isAmbi ? 'right-4 flex-row-reverse' : 'left-4'}`}>
           <button onClick={clearPayload} className={`w-10 h-10 flex items-center justify-center font-bold text-lg rounded-full active:scale-95 ${themeCfg.btnDanger}`}>✕</button>
-          
+          <button onClick={handleReset} className={`px-4 h-10 text-xs font-mono font-bold rounded-full active:scale-95 ${themeCfg.btnDefault}`}>[ RESET PLANE ]</button>
+        </div>
+      )}
+
+      {/* Vertical Stack: Hexagon Lock */}
+      {!isPitchMode && (
+        <div className={`absolute top-1/3 -translate-y-1/2 z-50 flex flex-col items-center gap-4 pointer-events-auto transition-all duration-300 ${isAmbi ? 'right-4' : 'left-4'}`}>
           <button 
             onClick={() => setIsLocked(!isLocked)} 
             className={`w-12 h-12 flex items-center justify-center text-3xl rounded-full border-2 active:scale-90 transition-all duration-300 ${isLocked ? 'text-red-500 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.6)] bg-red-900/20' : 'text-cyan-400 border-cyan-400 shadow-[0_0_10px_rgba(0,204,255,0.3)] bg-cyan-900/20'}`}
           >
             {isLocked ? '⬣' : '⎔'}
           </button>
-          
-          <button onClick={() => setCorners(getCenteredCoordinates())} className={`px-4 h-10 text-xs font-mono font-bold rounded-full active:scale-95 ${themeCfg.btnDefault}`}>[ RESET PLANE ]</button>
         </div>
       )}
 
@@ -109,17 +143,22 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
         </div>
       </div>
 
+      {/* Sleek Middle-Ground HUD Slider - Tuned to avoid Carousel & OS hitboxes */}
       {!isPitchMode && (
-        <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-auto bg-black/40 px-6 py-3 rounded-xl backdrop-blur-md border border-white/10">
-          <label className={`text-xs font-mono tracking-widest mb-3 font-black ${themeCfg.appBg === 'bg-[#f4f4f5]' ? 'text-gray-200' : 'text-cyan-400'}`}>
-            SCALE: {payloadScale.toFixed(2)}x
-          </label>
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[45] flex flex-col items-center pointer-events-auto w-64 bg-[#0a0a0c]/80 px-4 py-2 rounded-lg border border-cyan-500/30 shadow-[0_0_15px_rgba(0,204,255,0.1)] backdrop-blur-md">
+          <div className="flex justify-between w-full px-1 mb-2">
+            <span className={`text-[9px] font-mono font-bold tracking-widest ${themeCfg.appBg === 'bg-[#f4f4f5]' ? 'text-gray-500' : 'text-cyan-700'}`}>MIN</span>
+            <label className={`text-[10px] font-mono tracking-widest font-black shadow-cyan-500/50 drop-shadow-md ${themeCfg.appBg === 'bg-[#f4f4f5]' ? 'text-gray-800' : 'text-cyan-400'}`}>
+              SCALE // {payloadScale.toFixed(2)}x
+            </label>
+            <span className={`text-[9px] font-mono font-bold tracking-widest ${themeCfg.appBg === 'bg-[#f4f4f5]' ? 'text-gray-500' : 'text-cyan-700'}`}>MAX</span>
+          </div>
           <input 
             type="range" 
             min="0.2" max="3" step="0.05" 
             value={payloadScale} 
             onChange={(e) => setPayloadScale(parseFloat(e.target.value))}
-            className="w-56 accent-cyan-500 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+            className="cyber-slider w-full"
           />
         </div>
       )}
