@@ -6,11 +6,26 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
   const [imgTransform, setImgTransform] = useState({ rotate: 0, flipX: 1, flipY: 1 });
   const videoRef = useRef(null);
 
+  // UPGRADE 3: Gyroscope Sensor State
+  const [tilt, setTilt] = useState({ beta: 0, gamma: 0 });
+  const [hasGyroPermission, setHasGyroPermission] = useState(false);
+
   useEffect(() => {
     if (hardwareTrigger > 0) requestHardwareAccess();
   }, [hardwareTrigger]);
 
-  const requestHardwareAccess = async () => startCamera();
+  const requestHardwareAccess = async () => {
+    // Request Gyro Permission alongside Camera Init
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const perm = await DeviceOrientationEvent.requestPermission();
+        if (perm === 'granted') setHasGyroPermission(true);
+      } catch (err) { console.error("Gyro perm failed", err); }
+    } else {
+      setHasGyroPermission(true); // Auto-grant for non-iOS
+    }
+    startCamera();
+  };
 
   const startCamera = async () => {
     try {
@@ -25,6 +40,18 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
       videoRef.current.srcObject = mediaStream;
     }
   }, [isCameraLive, mediaStream]);
+
+  // Activate Sensor Feed only when camera is live
+  useEffect(() => {
+    if (isCameraLive && hasGyroPermission) {
+      const handleOrientation = (e) => setTilt({ beta: e.beta || 0, gamma: e.gamma || 0 });
+      window.addEventListener('deviceorientation', handleOrientation);
+      return () => window.removeEventListener('deviceorientation', handleOrientation);
+    }
+  }, [isCameraLive, hasGyroPermission]);
+
+  // Calibration Definition (Within 2 degrees of absolute zero)
+  const isLevel = Math.abs(tilt.beta) < 2 && Math.abs(tilt.gamma) < 2;
 
   const captureFrame = (e) => {
     e.stopPropagation();
@@ -60,7 +87,27 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
       
       <div className="absolute inset-0 z-10 flex items-center justify-center overflow-hidden">
         {isCameraLive && !groundImage && (
-          <video ref={videoRef} autoPlay playsInline muted crossOrigin="anonymous" className="w-full h-full object-cover" />
+          <>
+            <video ref={videoRef} autoPlay playsInline muted crossOrigin="anonymous" className="w-full h-full object-cover" />
+            
+            {/* INJECTED GYRO RETICLE OVERLAY */}
+            {hasGyroPermission && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+                <div style={{
+                  width: '80px', height: '80px', borderRadius: '50%',
+                  border: `4px solid ${isLevel ? '#22c55e' : '#ef4444'}`,
+                  transform: `translate(${tilt.gamma * 3}px, ${tilt.beta * 3}px)`,
+                  transition: 'transform 0.1s ease-out, border-color 0.2s',
+                  boxShadow: isLevel ? '0 0 15px #22c55e' : 'none'
+                }} />
+                <div className="absolute w-2 h-2 bg-white rounded-full" />
+                <div className="absolute top-32 text-white/70 font-mono text-xs text-center font-bold tracking-widest drop-shadow-md">
+                  <p>PITCH: {tilt.beta.toFixed(1)}°</p>
+                  <p>ROLL: {tilt.gamma.toFixed(1)}°</p>
+                </div>
+              </div>
+            )}
+          </>
         )}
         {groundImage && (
           <img 
@@ -81,7 +128,6 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
 
       {!isPitchMode && (
         <>
-          {/* PURGE / RESET: Top 28, swaps via isAmbi */}
           {(groundImage || isCameraLive) && (
             <div className={`absolute top-28 z-50 flex items-center gap-2 pointer-events-auto transition-all duration-300 ${isAmbi ? 'right-4 flex-row-reverse' : 'left-4'}`}>
               <button onClick={handlePurge} className={`w-8 h-8 flex items-center justify-center font-bold rounded active:scale-95 ${themeCfg.btnDanger}`}>✕</button>
@@ -91,7 +137,6 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
             </div>
           )}
 
-          {/* ORIENTATION: Center Y, swaps via isAmbi */}
           {groundImage && (
             <div className={`absolute top-1/2 -translate-y-1/2 flex flex-col gap-8 z-50 pointer-events-auto transition-all duration-300 ${isAmbi ? 'left-4' : 'right-4'}`}>
               <button onClick={() => setImgTransform(p => ({ ...p, rotate: p.rotate - 90 }))} className={`w-12 h-12 rounded-full text-xl flex items-center justify-center active:scale-90 ${themeCfg.btnDefault}`}>↶</button>
@@ -101,9 +146,17 @@ export default function GroundPlane({ children, isPitchMode, hardwareTrigger, gr
             </div>
           )}
 
+          {/* INJECTED SENSOR OVERRIDE ON CAPTURE BUTTON */}
           {isCameraLive && (
-            <button onPointerDown={captureFrame} className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-white text-black font-mono font-bold px-8 py-3 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.8)] active:scale-95 z-50 pointer-events-auto">
-              CAPTURE LOCK
+            <button 
+              onPointerDown={(isLevel || !hasGyroPermission) ? captureFrame : null} 
+              className={`absolute bottom-12 left-1/2 -translate-x-1/2 font-mono font-bold px-8 py-3 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.8)] z-50 pointer-events-auto transition-all duration-300 ${
+                (isLevel || !hasGyroPermission) 
+                  ? 'bg-white text-black active:scale-95' 
+                  : 'bg-red-900/80 text-red-300 border border-red-500 scale-95'
+              }`}
+            >
+              {(!hasGyroPermission || isLevel) ? 'CAPTURE LOCK' : 'LEVEL DEVICE'}
             </button>
           )}
         </>
