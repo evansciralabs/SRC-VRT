@@ -144,9 +144,10 @@ export default function App() {
     }
     
     if (extractedPayloads.length > 0) {
-      setPayloads(prev => [...prev, ...extractedPayloads]);
-      setActivePayloadIdx(payloads.length); 
-    }
+  const newStartIdx = payloads.length;
+  setPayloads(prev => [...prev, ...extractedPayloads]);
+  setActivePayloadIdx(newStartIdx);
+}
     event.target.value = ''; 
   };
 
