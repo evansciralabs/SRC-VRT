@@ -14,7 +14,7 @@ const getCenteredCoordinates = () => {
   ];
 };
 
-export default function ArtPlane({ children, isPitchMode, isActive, clearPayload, isAmbi, themeCfg }) {
+export default function ArtPlane({ children, isPitchMode, isActive, clearPayload, isAmbi, themeCfg, onCyclePrev, onCycleNext }) {
   const [corners, setCorners] = useState(() => {
     const savedMatrix = localStorage.getItem('src-vrt-matrix-lock');
     return savedMatrix ? JSON.parse(savedMatrix) : getCenteredCoordinates();
@@ -68,6 +68,7 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
     setDragStart(null);
   };
 
+  // Reset zeroes out the matrix and snaps the scale back to 1.00x
   const handleReset = () => {
     setCorners(getCenteredCoordinates());
     setPayloadScale(1);
@@ -90,44 +91,37 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
     >
-      {/* Global CSS injection for sleek hardware slider aesthetics */}
       <style>{`
         .cyber-slider { -webkit-appearance: none; appearance: none; background: transparent; }
         .cyber-slider::-webkit-slider-thumb {
-          -webkit-appearance: none; appearance: none;
-          width: 8px; height: 18px;
-          background: #06b6d4; border: 1px solid #cffafe;
-          cursor: pointer; border-radius: 1px;
-          box-shadow: 0 0 10px #06b6d4;
-          margin-top: -7px;
+          -webkit-appearance: none; appearance: none; width: 8px; height: 18px;
+          background: #06b6d4; border: 1px solid #cffafe; cursor: pointer; border-radius: 1px;
+          box-shadow: 0 0 10px #06b6d4; margin-top: -7px;
         }
         .cyber-slider::-webkit-slider-runnable-track {
-          width: 100%; height: 4px;
-          cursor: pointer; background: rgba(6, 182, 212, 0.2);
+          width: 100%; height: 4px; cursor: pointer; background: rgba(6, 182, 212, 0.2);
           border-radius: 2px; border: 1px solid rgba(6, 182, 212, 0.4);
         }
         .cyber-slider::-moz-range-thumb {
-          width: 8px; height: 18px;
-          background: #06b6d4; border: 1px solid #cffafe;
-          cursor: pointer; border-radius: 1px;
-          box-shadow: 0 0 10px #06b6d4;
+          width: 8px; height: 18px; background: #06b6d4; border: 1px solid #cffafe;
+          cursor: pointer; border-radius: 1px; box-shadow: 0 0 10px #06b6d4;
         }
       `}</style>
 
-      {/* Top Header Controls */}
+      {/* Top Header Controls: Restored strict MVP geometry */}
       {!isPitchMode && (
-        <div className={`absolute top-16 z-50 flex items-center gap-4 pointer-events-auto transition-all duration-300 ${isAmbi ? 'right-4 flex-row-reverse' : 'left-4'}`}>
-          <button onClick={clearPayload} className={`w-10 h-10 flex items-center justify-center font-bold text-lg rounded-full active:scale-95 ${themeCfg.btnDanger}`}>✕</button>
-          <button onClick={handleReset} className={`px-4 h-10 text-xs font-mono font-bold rounded-full active:scale-95 ${themeCfg.btnDefault}`}>[ RESET PLANE ]</button>
+        <div className={`absolute top-16 z-50 flex items-center gap-2 pointer-events-auto transition-all duration-300 ${isAmbi ? 'right-4 flex-row-reverse' : 'left-4'}`}>
+          <button onClick={clearPayload} className={`w-8 h-8 flex items-center justify-center font-bold rounded active:scale-95 ${themeCfg.btnDanger}`}>✕</button>
+          <button onClick={handleReset} className={`px-3 h-8 text-xs font-mono rounded active:scale-95 ${themeCfg.btnDefault}`}>[ RESET PLANE ]</button>
         </div>
       )}
 
-      {/* Vertical Stack: Hexagon Lock */}
+      {/* Vertical Stack: Hex Lock restored to matching hardware styling */}
       {!isPitchMode && (
         <div className={`absolute top-1/3 -translate-y-1/2 z-50 flex flex-col items-center gap-4 pointer-events-auto transition-all duration-300 ${isAmbi ? 'right-4' : 'left-4'}`}>
           <button 
             onClick={() => setIsLocked(!isLocked)} 
-            className={`w-12 h-12 flex items-center justify-center text-3xl rounded-full border-2 active:scale-90 transition-all duration-300 ${isLocked ? 'text-red-500 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.6)] bg-red-900/20' : 'text-cyan-400 border-cyan-400 shadow-[0_0_10px_rgba(0,204,255,0.3)] bg-cyan-900/20'}`}
+            className={`w-12 h-12 rounded-full text-xl flex items-center justify-center active:scale-90 font-bold transition-colors duration-300 ${isLocked ? themeCfg.btnDanger : themeCfg.btnDefault}`}
           >
             {isLocked ? '⬣' : '⎔'}
           </button>
@@ -143,23 +137,32 @@ export default function ArtPlane({ children, isPitchMode, isActive, clearPayload
         </div>
       </div>
 
-      {/* Sleek Middle-Ground HUD Slider - Tuned to avoid Carousel & OS hitboxes */}
+      {/* Lower Quadrant: Condensed Inline Cycler & Slider */}
       {!isPitchMode && (
-        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[45] flex flex-col items-center pointer-events-auto w-64 bg-[#0a0a0c]/80 px-4 py-2 rounded-lg border border-cyan-500/30 shadow-[0_0_15px_rgba(0,204,255,0.1)] backdrop-blur-md">
-          <div className="flex justify-between w-full px-1 mb-2">
-            <span className={`text-[9px] font-mono font-bold tracking-widest ${themeCfg.appBg === 'bg-[#f4f4f5]' ? 'text-gray-500' : 'text-cyan-700'}`}>MIN</span>
-            <label className={`text-[10px] font-mono tracking-widest font-black shadow-cyan-500/50 drop-shadow-md ${themeCfg.appBg === 'bg-[#f4f4f5]' ? 'text-gray-800' : 'text-cyan-400'}`}>
+        <div className="absolute bottom-24 w-full px-6 flex justify-center items-center gap-3 z-50 pointer-events-auto">
+          {/* Left Cycler Node */}
+          {onCyclePrev && (
+            <button onClick={onCyclePrev} className={`w-12 h-12 rounded-full text-xl flex items-center justify-center active:scale-90 font-bold shadow-lg ${themeCfg.btnDefault}`}>◁</button>
+          )}
+          
+          {/* Scale Slider Core */}
+          <div className="flex-1 max-w-[220px] flex flex-col items-center bg-[#0a0a0c]/80 px-4 py-2 rounded-lg border border-cyan-500/30 shadow-[0_0_15px_rgba(0,204,255,0.1)] backdrop-blur-md">
+            <label className={`text-[10px] font-mono tracking-widest font-black mb-1 shadow-cyan-500/50 drop-shadow-md ${themeCfg.appBg === 'bg-[#f4f4f5]' ? 'text-gray-800' : 'text-cyan-400'}`}>
               SCALE // {payloadScale.toFixed(2)}x
             </label>
-            <span className={`text-[9px] font-mono font-bold tracking-widest ${themeCfg.appBg === 'bg-[#f4f4f5]' ? 'text-gray-500' : 'text-cyan-700'}`}>MAX</span>
+            <input 
+              type="range" 
+              min="0.2" max="3" step="0.05" 
+              value={payloadScale} 
+              onChange={(e) => setPayloadScale(parseFloat(e.target.value))}
+              className="cyber-slider w-full"
+            />
           </div>
-          <input 
-            type="range" 
-            min="0.2" max="3" step="0.05" 
-            value={payloadScale} 
-            onChange={(e) => setPayloadScale(parseFloat(e.target.value))}
-            className="cyber-slider w-full"
-          />
+
+          {/* Right Cycler Node */}
+          {onCycleNext && (
+            <button onClick={onCycleNext} className={`w-12 h-12 rounded-full text-xl flex items-center justify-center active:scale-90 font-bold shadow-lg ${themeCfg.btnDefault}`}>▷</button>
+          )}
         </div>
       )}
 
