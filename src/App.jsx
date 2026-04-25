@@ -139,15 +139,20 @@ export default function App() {
           };
           
           recursiveSearch(json, null);
-        } catch (err) {}
+        } catch (err) {
+         console.error(`[SRC-VRT] Failed to parse ${file.name}:`, err);
+         const errPayload = { id: `ERR: ${file.name}`, css: '', html: '' };
+         setPayloads(prev => [...prev, errPayload]);
+         setActivePayloadIdx(prev => prev);
+         setTimeout(() => setPayloads(prev => prev.filter(p => p.id !== errPayload.id)), 2000);
       }
     }
     
     if (extractedPayloads.length > 0) {
-  const newStartIdx = payloads.length;
-  setPayloads(prev => [...prev, ...extractedPayloads]);
-  setActivePayloadIdx(newStartIdx);
-}
+     const newStartIdx = payloads.length;
+     setPayloads(prev => [...prev, ...extractedPayloads]);
+     setActivePayloadIdx(newStartIdx);
+    }
     event.target.value = ''; 
   };
 
