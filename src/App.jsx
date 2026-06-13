@@ -3,7 +3,7 @@ import * as htmlToImage from 'html-to-image';
 import GroundPlane from './components/GroundPlane';
 import ArtPlane from './components/ArtPlane';
 
-// VΞILPØINT SANITIZER — unchanged from V1
+// VΞILPØINT SANITIZER
 const extractVeilpointPayload = (rawString) => {
   if (!rawString || typeof rawString !== 'string') return null;
 
@@ -35,7 +35,7 @@ const extractVeilpointPayload = (rawString) => {
   return { css, html: html.trim() };
 };
 
-// MASTER THEME CONFIGURATOR — unchanged from V1
+// MASTER THEME CONFIGURATOR
 const getThemeStyles = (theme) => {
   if (theme === 'daylight') return {
     appBg: 'bg-[#f4f4f5]',
@@ -71,7 +71,7 @@ export default function App() {
   const exportRef = useRef(null);
   const tapTimer = useRef(null);
 
-  // ARCHITECTURE STATE — V1 core, unchanged
+  // ARCHITECTURE STATE
   const [isPitchMode, setIsPitchMode] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [hardwareTrigger, setHardwareTrigger] = useState(0); 
@@ -80,42 +80,13 @@ export default function App() {
   const [payloads, setPayloads] = useState([]);
   const [activePayloadIdx, setActivePayloadIdx] = useState(0);
 
-  // ── STAMP ARCHITECTURE ────────────────────────────────────────────────────
-  const [stampedLayers, setStampedLayers] = useState([]);
-  const [isLocked, setIsLocked] = useState(false);
-  const [stampTrigger, setStampTrigger] = useState(0);
-  const holdTimer = useRef(null);
-
-  const executeStampLayer = (matrix, scale) => {
-    if (payloads.length === 0) return;
-    const p = payloads[activePayloadIdx];
-    setStampedLayers(prev => [...prev, {
-      id: `${p.id}-${Date.now()}`,
-      css: p.css,
-      html: p.html,
-      matrix,
-      scale,
-    }]);
-    // Auto-advance to next payload so next STAMP targets a fresh node
-    if (payloads.length > 1) {
-      setActivePayloadIdx(i => (i < payloads.length - 1 ? i + 1 : 0));
-    }
-  };
-  // ─────────────────────────────────────────────────────────────────────────
-
-  // ── EXPORT MODAL STATE ────────────────────────────────────────────────────
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [exportPrefix, setExportPrefix] = useState('VRT-MATRIX');
-  const [exportGridlines, setExportGridlines] = useState(false);
-  // ─────────────────────────────────────────────────────────────────────────
-
-  // HUD STATE — unchanged from V1
+  // HUD STATE
   const [isAmbi, setIsAmbi] = useState(false);
-  const [theme, setTheme] = useState('neon');
+  const [theme, setTheme] = useState('neon'); // 'neon', 'ghost', 'daylight'
 
   const themeCfg = getThemeStyles(theme);
 
-  // TEMPORAL LOGIC — unchanged from V1
+  // TEMPORAL LOGIC: Single vs Double Tap
   const handleVRTTap = (e) => {
     e.stopPropagation();
     if (tapTimer.current) {
@@ -130,7 +101,6 @@ export default function App() {
     }
   };
 
-  // SMART IMPORT — unchanged from V1
   const handleSmartImport = async (event) => {
     const files = Array.from(event.target.files);
     let extractedPayloads = [];
@@ -176,8 +146,8 @@ export default function App() {
           setActivePayloadIdx(prev => prev);
           setTimeout(() => setPayloads(prev => prev.filter(p => p.id !== errPayload.id)), 2000);
         }
-      }
-    }
+      } // <-- Restored missing bracket for the 'else if' block
+    } // <-- Properly closes the 'for' loop
     
     if (extractedPayloads.length > 0) {
       const newStartIdx = payloads.length;
@@ -187,51 +157,32 @@ export default function App() {
     event.target.value = ''; 
   };
 
-  // ── RENDER PIPELINE ───────────────────────────────────────────────────────
-  // Called after the export modal confirms prefix + gridlines choice.
-  const executeRenderPipeline = async (prefix, includeGridlines) => {
+  const executeRenderPipeline = async () => {
     if (!exportRef.current) return;
-    setShowExportModal(false);
     setIsRendering(true);
     setIsPitchMode(true);
     await new Promise(resolve => setTimeout(resolve, 150)); 
 
     try {
-      const dataUrl = await htmlToImage.toPng(exportRef.current, {
-        quality: 1.0,
-        pixelRatio: 2,
-        backgroundColor: theme === 'daylight' ? '#ffffff' : '#000000',
-        style: { transform: 'none' },
-        // When gridlines are excluded we rely on isPitchMode hiding the HUD;
-        // when included the gridlines overlay renders naturally in the capture.
-        filter: (node) => {
-          if (!includeGridlines && node.dataset && node.dataset.gridoverlay) return false;
-          return true;
-        }
-      });
+      const dataUrl = await htmlToImage.toPng(exportRef.current, { quality: 1.0, pixelRatio: 2, backgroundColor: theme === 'daylight' ? '#ffffff' : '#000000', style: { transform: 'none' } });
       const link = document.createElement('a');
-      const shortHash = Math.random().toString(36).substring(2, 6).toUpperCase();
-      link.download = `${prefix || 'VRT-MATRIX'}_${shortHash}.png`;
+      link.download = `SRC-VRT-MATRIX_${Date.now()}.png`;
       link.href = dataUrl;
       link.click();
-    } catch (error) {
-      console.error('Pipeline failure:', error);
-    } finally {
+    } catch (error) {} finally {
       setIsPitchMode(false);
       setIsRendering(false);
     }
   };
-  // ─────────────────────────────────────────────────────────────────────────
 
   const clearArtPlane = () => {
     setPayloads([]);
     setActivePayloadIdx(0);
-    setStampedLayers([]);
   };
 
   const hasActivePayload = payloads.length > 0;
 
-  // DYNAMIC BUTTON STYLES — unchanged from V1
+  // DYNAMIC BUTTON STYLES FOR PRIMARY TOOLS
   const getToolStyle = (type) => {
     if (theme === 'daylight') return 'bg-white border-blue-400 text-blue-500 shadow-none';
     if (theme === 'ghost') return 'bg-transparent border-gray-700 text-gray-600 shadow-none';
@@ -240,13 +191,10 @@ export default function App() {
     if (type === 'export') return 'bg-slate-800 border-yellow-500 text-yellow-400 shadow-[0_0_10px_rgba(255,215,0,0.3)]';
   };
 
-  const isNeon = theme === 'neon';
-  const isDaylight = theme === 'daylight';
-
   return (
     <div className={`w-full h-screen font-mono overflow-hidden relative transition-colors duration-300 ${themeCfg.appBg} ${themeCfg.textMain}`}>
       
-      {/* VRT BRANDING — unchanged from V1 */}
+      {/* VRT BRANDING (MODE TOGGLE) */}
       <div 
         onClick={handleVRTTap}
         className={`absolute top-4 left-1/2 -translate-x-1/2 text-sm font-bold tracking-[0.3em] cursor-pointer select-none z-[60] transition-colors ${theme === 'daylight' ? 'text-blue-500' : (theme === 'ghost' ? 'text-gray-700' : 'text-cyan-600/50')}`}
@@ -254,7 +202,7 @@ export default function App() {
         VRT
       </div>
 
-      {/* SRC BRANDING — unchanged from V1 */}
+      {/* SRC BRANDING (AMBIDEXTROUS SWAP) */}
       <div 
         onClick={() => setIsAmbi(!isAmbi)}
         className={`absolute top-4 ${isAmbi ? 'left-4' : 'right-4'} text-sm font-bold tracking-[0.3em] cursor-pointer select-none z-[60] transition-colors ${theme === 'daylight' ? 'text-slate-400 hover:text-slate-600' : 'text-gray-600 hover:text-gray-400'}`}
@@ -262,45 +210,13 @@ export default function App() {
         SRC
       </div>
 
-      {/* TACTICAL Y-AXIS TOOLSET — lock button added above cam, same gap-8 rhythm */}
+      {/* TACTICAL Y-AXIS TOOLSET */}
       <div className={`absolute top-1/2 -translate-y-1/2 flex flex-col gap-8 z-[60] pointer-events-auto transition-all duration-300 ${isAmbi ? 'right-4' : 'left-4'}`}>
-        {/* Lock: tap=stamp active layer, hold=toggle clean preview */}
-        {hasActivePayload && (
-          <button
-            onPointerDown={() => {
-              holdTimer.current = setTimeout(() => {
-                setIsLocked(l => !l);
-                holdTimer.current = null;
-              }, 500);
-            }}
-            onPointerUp={() => {
-              if (holdTimer.current) {
-                clearTimeout(holdTimer.current);
-                holdTimer.current = null;
-                // stamp fires via ArtPlane's onStamp — trigger it by toggling a counter
-                setStampTrigger(t => t + 1);
-              }
-            }}
-            onPointerLeave={() => {
-              if (holdTimer.current) {
-                clearTimeout(holdTimer.current);
-                holdTimer.current = null;
-              }
-            }}
-            className={`w-12 h-12 rounded-full border flex items-center justify-center text-xl font-bold transition-colors duration-300 ${isLocked ? themeCfg.btnDanger : themeCfg.btnDefault}`}
-          >
-            {isLocked ? '⬣' : '⎔'}
-          </button>
-        )}
         <button onClick={() => setHardwareTrigger(prev => prev + 1)} className={`w-12 h-12 rounded-full border flex items-center justify-center text-xl active:scale-90 transition-colors ${getToolStyle('cam')}`}>ᛰ</button>
         <label className={`w-12 h-12 rounded-full border flex items-center justify-center text-xl active:scale-90 cursor-pointer transition-colors ${getToolStyle('import')}`}>
           ⤓<input type="file" multiple accept=".srcd, image/*" onChange={handleSmartImport} className="hidden" />
         </label>
-        <button
-          onClick={() => !isRendering && setShowExportModal(true)}
-          disabled={isRendering}
-          className={`w-12 h-12 rounded-full border flex items-center justify-center text-xl active:scale-90 transition-colors ${isRendering ? 'border-gray-500 text-gray-500 bg-transparent' : getToolStyle('export')}`}
-        >
+        <button onClick={executeRenderPipeline} disabled={isRendering} className={`w-12 h-12 rounded-full border flex items-center justify-center text-xl active:scale-90 transition-colors ${isRendering ? 'border-gray-500 text-gray-500 bg-transparent' : getToolStyle('export')}`}>
           {isRendering ? '⧖' : '⤒'}
         </button>
       </div>
@@ -309,37 +225,15 @@ export default function App() {
         <div ref={exportRef} className={`w-full h-full relative overflow-hidden transition-colors duration-300 ${theme === 'daylight' ? 'bg-[#ffffff]' : 'bg-[#0a0a0a]'}`}>
           
           <GroundPlane isPitchMode={isPitchMode} hardwareTrigger={hardwareTrigger} groundImage={groundImage} setGroundImage={setGroundImage} isAmbi={isAmbi} theme={theme} themeCfg={themeCfg}>
-
-            {/* ── STAMPED BACKGROUND LAYERS ───────────────────────────────── */}
-            {/* Fully inert — pointer-events none, locked in place */}
-            <div className="absolute inset-0 z-30 pointer-events-none">
-              {stampedLayers.map(layer => (
-                <div
-                  key={layer.id}
-                  className="absolute top-0 left-0 origin-top-left flex items-center justify-center overflow-visible"
-                  style={{ transform: layer.matrix, width: '240px', height: '240px' }}
-                >
-                  <div style={{ transform: `scale(${layer.scale})`, transformOrigin: 'center center', width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                    <style dangerouslySetInnerHTML={{ __html: layer.css }} />
-                    <div className="[&>svg]:max-w-full [&>svg]:max-h-full w-full h-full flex items-center justify-center" dangerouslySetInnerHTML={{ __html: layer.html }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-            {/* ────────────────────────────────────────────────────────────── */}
-
             <ArtPlane 
               isPitchMode={isPitchMode} 
               isActive={hasActivePayload} 
               clearPayload={clearArtPlane} 
               isAmbi={isAmbi} 
               themeCfg={themeCfg}
+              // WIRE CYCLER STATE TO ARTPLANE
               onCyclePrev={payloads.length > 1 ? () => setActivePayloadIdx(p => (p > 0 ? p - 1 : payloads.length - 1)) : undefined}
               onCycleNext={payloads.length > 1 ? () => setActivePayloadIdx(p => (p < payloads.length - 1 ? p + 1 : 0)) : undefined}
-              onStamp={hasActivePayload ? executeStampLayer : undefined}
-              stampedCount={stampedLayers.length}
-              isLocked={isLocked}
-              stampTrigger={stampTrigger}
             >
               {hasActivePayload ? (
                 <div className="w-full h-full flex items-center justify-center pointer-events-none">
@@ -353,78 +247,14 @@ export default function App() {
         </div>
       </main>
 
-      {/* ACTIVE PAYLOAD READOUT — unchanged from V1, stamped count appended */}
+      {/* ACTIVE PAYLOAD READOUT (Replaces the old Carousel buttons) */}
       {payloads.length > 0 && !isPitchMode && (
         <div className="absolute bottom-40 left-1/2 -translate-x-1/2 z-[70] pointer-events-none text-center w-full max-w-[280px]">
-          <span className={`px-4 py-1 text-[10px] font-mono font-bold tracking-widest border-b rounded-full shadow-lg ${isDaylight ? 'text-slate-500 border-slate-300 bg-white/50' : 'text-cyan-400 border-cyan-500/30 bg-black/50 backdrop-blur-sm'}`}>
+          <span className={`px-4 py-1 text-[10px] font-mono font-bold tracking-widest border-b rounded-full shadow-lg ${themeCfg.appBg === 'bg-[#f4f4f5]' ? 'text-slate-500 border-slate-300 bg-white/50' : 'text-cyan-400 border-cyan-500/30 bg-black/50 backdrop-blur-sm'}`}>
             NODE: {payloads[activePayloadIdx].id}
-            {stampedLayers.length > 0 && (
-              <span className="ml-2 opacity-60">// {stampedLayers.length}⬡</span>
-            )}
           </span>
         </div>
       )}
-
-      {/* ── EXPORT MODAL ─────────────────────────────────────────────────── */}
-      {showExportModal && (
-        <div className="absolute inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto">
-          <div className={`rounded-xl px-6 py-5 font-mono flex flex-col gap-4 min-w-[240px] ${themeCfg.panel}`}>
-            
-            <div className="text-[10px] tracking-[0.25em] font-bold opacity-60">EXPORT // CONFIGURE</div>
-
-            {/* Prefix input */}
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] tracking-widest opacity-50">PROJECT PREFIX</label>
-              <input
-                autoFocus
-                type="text"
-                value={exportPrefix}
-                onChange={e => setExportPrefix(e.target.value.toUpperCase().replace(/\s/g, '-'))}
-                onKeyDown={e => e.key === 'Enter' && executeRenderPipeline(exportPrefix, exportGridlines)}
-                maxLength={24}
-                className={`bg-transparent border-b outline-none font-mono text-sm font-bold tracking-widest pb-0.5 ${
-                  isDaylight ? 'border-blue-300 text-slate-700'
-                  : isNeon ? 'border-cyan-700 text-cyan-300'
-                  : 'border-gray-700 text-gray-400'
-                }`}
-              />
-            </div>
-
-            {/* Gridlines checkbox */}
-            <div
-              className="flex items-center gap-3 cursor-pointer select-none"
-              onClick={() => setExportGridlines(g => !g)}
-            >
-              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                exportGridlines
-                  ? (isNeon ? 'bg-cyan-500 border-cyan-400' : isDaylight ? 'bg-blue-500 border-blue-400' : 'bg-gray-600 border-gray-500')
-                  : 'border-current bg-transparent'
-              }`}>
-                {exportGridlines && <div className="w-2 h-2 bg-white rounded-sm" />}
-              </div>
-              <span className="text-[10px] tracking-widest">INCLUDE GRIDLINES</span>
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={() => setShowExportModal(false)}
-                className={`flex-1 py-2 text-[10px] font-mono tracking-widest rounded active:scale-95 ${themeCfg.btnDanger}`}
-              >
-                CANCEL
-              </button>
-              <button
-                onClick={() => executeRenderPipeline(exportPrefix, exportGridlines)}
-                className={`flex-1 py-2 text-[10px] font-mono tracking-widest rounded active:scale-95 ${themeCfg.btnDefault}`}
-              >
-                RENDER
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* ─────────────────────────────────────────────────────────────────── */}
-
     </div>
   );
 }
