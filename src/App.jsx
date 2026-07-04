@@ -3,26 +3,44 @@ import * as htmlToImage from 'html-to-image';
 import GroundPlane from './components/GroundPlane';
 import ArtPlane from './components/ArtPlane';
 import solveHomography from './utils/mathUtils';
+import { sealImagePayload } from './lib/imagePayloadCodec';
+import { sanitizeVeilpointHtml, scopeVeilpointCss } from './lib/veilpointSanitizer';
+import { DEFAULT_SDAP_BRANDING, SDAP_BRANDING_FIELDS, resolveSdapBranding } from './lib/sdapBranding';
 
-// VΞILPØINT SANITIZER
+// VΞILPØINT SANITIZER — now backed by DOMPurify (real DOM parser) + CSS
+// selector scoping, replacing the old regex blocklist that could be bypassed
+// by unquoted/single-quoted event handlers and foreignObject smuggling.
+let _veilpointScopeCounter = 0;
 const extractVeilpointPayload = (rawString) => {
   if (!rawString || typeof rawString !== 'string') return null;
   const killWords = ['import React', 'export default', '<!DOCTYPE html>', 'function App', 'ReactDOM', 'module.exports', 'import {', 'export const', '"dependencies":'];
   if (killWords.some(word => rawString.includes(word))) return null;
   if (!rawString.includes('<style') && !rawString.includes('<svg')) return null;
+
+  // Unique scope class so this payload's CSS can only ever match its own wrapper.
+  const scopeClass = `vp-scope-${++_veilpointScopeCounter}-${Date.now().toString(36)}`;
+
   const cssMatch = rawString.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
-  let css = cssMatch ? cssMatch.map(m => m.replace(/<\/?style[^>]*>/gi, '')).join('\n') : '';
-  css += `\n body, main, div#root, .calibration-grid { background-color: transparent !important; background: transparent !important; border: none !important; outline: none !important; box-shadow: none !important; }`;
-  let html = rawString
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/ on\w+="[^"]*"/g, '')
+  const rawCss = cssMatch ? cssMatch.map(m => m.replace(/<\/?style[^>]*>/gi, '')).join('\n') : '';
+  // Scope every selector to .${scopeClass} — injected CSS can no longer touch
+  // app chrome (buttons, lock control, etc). Replaces the old forced
+  // body/main/#root background-transparent patch, which now simply never
+  // matches. If a design leaned on a body-level background, it renders
+  // without it; add a scoped fallback here if that ever regresses an import.
+  const css = scopeVeilpointCss(rawCss, scopeClass);
+
+  const rawHtml = rawString
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<!DOCTYPE html>/gi, '')
     .replace(/<\/?html[^>]*>/gi, '')
     .replace(/<\/?head[^>]*>/gi, '')
     .replace(/<\/?body[^>]*>/gi, '');
+  // DOMPurify SVG profile — strips scripts, event handlers (any quoting),
+  // javascript: URIs, and foreignObject regardless of how they're written.
+  const html = sanitizeVeilpointHtml(rawHtml);
+
   if (!css.trim() && !html.includes('<svg')) return null;
-  return { css, html: html.trim() };
+  return { css, html: html.trim(), scopeClass };
 };
 
 // MASTER THEME CONFIGURATOR
@@ -61,7 +79,6 @@ export default function App() {
   const [groundImage, setGroundImage] = useState(null);
 
   // PAYLOAD SCROLL STACK — persists across lock/unlock cycles
-  // This is the full library of imported designs the user scrolls through.
   const [payloadLibrary, setPayloadLibrary] = useState([]);
 
   // STAMP ARCHITECTURE
@@ -75,7 +92,6 @@ export default function App() {
   const [reactivatedFromIdx, setReactivatedFromIdx] = useState(null);
   const [restoredCorners, setRestoredCorners] = useState(null);
   const [restoredScale, setRestoredScale] = useState(null);
-  // isPlacing: true when user is actively positioning a fresh design element
   const [isPlacing, setIsPlacing] = useState(false);
 
   // EXPORT MODAL
@@ -83,12 +99,30 @@ export default function App() {
   const [exportPrefix, setExportPrefix] = useState('VRT-MATRIX');
   const [exportGridlines, setExportGridlines] = useState(false);
 
+  // ── OPERATOR CONSOLE (folded into the Export Modal) ───────────────────
+  // Every field is OPTIONAL. Hitting RENDER with all blank = a plain image
+  // (guest mode — no payload embedded). The three resulting modes:
+  //   nothing         → GUEST image
+  //   callsign only   → device-locked session image (works where the glyph
+  //                     was bound in the dashboard; inert elsewhere)
+  //   callsign+glyph  → portable key (works on any device; treat as secret)
+  const [opCallsign, setOpCallsign] = useState('');
+  const [opGlyph, setOpGlyph] = useState('');
+  const [opBranding, setOpBranding] = useState({ ...DEFAULT_SDAP_BRANDING });
+  const [showBranding, setShowBranding] = useState(false);
+  const updateBranding = (k, v) => setOpBranding(b => ({ ...b, [k]: v }));
+
+  const opMode = !opCallsign.trim()
+    ? 'GUEST — no credentials embedded'
+    : !opGlyph.trim()
+    ? 'DEVICE SESSION — logs in where you set this up'
+    : 'PORTABLE KEY — works on any device · treat as secret';
+
   // HUD
   const [isAmbi, setIsAmbi] = useState(false);
   const [theme, setTheme] = useState('neon');
   const themeCfg = getThemeStyles(theme);
 
-  // TEMPORAL LOGIC
   const handleVRTTap = (e) => {
     e.stopPropagation();
     if (tapTimer.current) {
@@ -146,50 +180,40 @@ export default function App() {
     if (extracted.length > 0) {
       setPayloadLibrary(prev => {
         const wasEmpty = prev.length === 0;
-        if (wasEmpty) setIsPlacing(true); // auto-start placing on first import
+        if (wasEmpty) setIsPlacing(true);
         return [...prev, ...extracted];
       });
     }
     event.target.value = '';
   };
 
-  // ── LAYER ACTIVATION ─────────────────────────────────────────────────────
-  // Pulls a stamped layer out for editing. Restores its geometry.
-  // The full payload library remains available for scrolling to switch designs.
-  // All state transitions synchronous — no setTimeout.
   const activateStampedLayer = (layerIdx) => {
     if (isLocked) return;
-
     const layer = stampedLayers[layerIdx];
     if (!layer) return;
 
-    // If something is currently active, auto-stamp it at its current position first
     if (hasActiveLayer && activeCornersRef.current && activeDesign) {
       const matrix = solveHomography(activeCornersRef.current) || 'matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)';
       const autoStamped = {
         id: `${activeDesign.id}-${Date.now()}`,
-        css: activeDesign.css, html: activeDesign.html,
+        css: activeDesign.css, html: activeDesign.html, scopeClass: activeDesign.scopeClass,
         matrix, scale: activeScaleRef.current,
         corners: activeCornersRef.current,
       };
       if (mode === 'editing') {
-        // Re-insert at original position
         setStampedLayers(prev => {
           const next = [...prev];
           next.splice(reactivatedFromIdx, 0, autoStamped);
-          // Now remove the target layer from the updated array
           const targetIdx = layerIdx >= reactivatedFromIdx ? layerIdx + 1 : layerIdx;
           return next.filter((_, i) => i !== targetIdx);
         });
       } else {
-        // Was placing — append auto-stamp, remove target from remaining
         setStampedLayers(prev => {
           const appended = [...prev.filter((_, i) => i !== layerIdx), autoStamped];
           return appended;
         });
       }
     } else {
-      // Nothing active — just remove target from stamps
       setStampedLayers(prev => prev.filter((_, i) => i !== layerIdx));
     }
 
@@ -202,14 +226,13 @@ export default function App() {
 
   const executeStampLayer = (matrix, scale, corners) => {
     if (!activeDesign) return;
-
     const newLayer = {
       id: `${activeDesign.id}-${Date.now()}`,
       css: activeDesign.css,
       html: activeDesign.html,
+      scopeClass: activeDesign.scopeClass,
       matrix, scale, corners,
     };
-
     if (mode === 'editing') {
       setStampedLayers(prev => {
         const next = [...prev];
@@ -220,10 +243,8 @@ export default function App() {
       setReactivatedFromIdx(null);
       setRestoredCorners(null);
       setRestoredScale(null);
-      // Return to idle so stamped layer tap targets are accessible
       setIsPlacing(false);
     } else {
-      // Fresh placing — append, advance library index, stay in placing
       setStampedLayers(prev => [...prev, newLayer]);
       if (payloadLibrary.length > 1) {
         setActiveDesignIdx(i => (i < payloadLibrary.length - 1 ? i + 1 : i));
@@ -233,20 +254,16 @@ export default function App() {
 
   const clearActiveLayer = () => {
     if (mode === 'editing') {
-      // Layer already removed from stampedLayers on activate — just clear state
       setReactivatedLayer(null);
       setReactivatedFromIdx(null);
       setRestoredCorners(null);
       setRestoredScale(null);
-      // Return to idle so user can tap any remaining stamped layer
       setIsPlacing(false);
     } else if (mode === 'placing') {
-      // Cancel current placement, return to idle
       setIsPlacing(false);
     }
   };
 
-  // Full reset — clears everything
   const clearAll = () => {
     setPayloadLibrary([]);
     setActiveDesignIdx(0);
@@ -258,9 +275,8 @@ export default function App() {
     setIsLocked(false);
     setIsPlacing(false);
   };
-  // ─────────────────────────────────────────────────────────────────────────
 
-  // ── RENDER PIPELINE ───────────────────────────────────────────────────────
+  // ── RENDER PIPELINE (now seals operator payload into the PNG) ──────────
   const executeRenderPipeline = async (prefix, includeGridlines) => {
     setShowExportModal(false);
     setIsRendering(true);
@@ -284,10 +300,39 @@ export default function App() {
           left: '0',
         },
       });
+
+      // SEAL: only when a callsign is present. Blank callsign = guest image,
+      // exported plain exactly like before. Glyph and branding are optional
+      // on top of that. Plaintext LSB payload — no crypto here; the dashboard
+      // derives its key from the recovered callsign+glyph on import.
+      let finalUrl = dataUrl;
+      if (opCallsign.trim()) {
+        try {
+          const img = new Image();
+          await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataUrl; });
+          const c = document.createElement('canvas');
+          c.width = img.naturalWidth;
+          c.height = img.naturalHeight;
+          const cx = c.getContext('2d', { willReadFrequently: true });
+          cx.drawImage(img, 0, 0);
+          const imgData = cx.getImageData(0, 0, c.width, c.height);
+          const branding = resolveSdapBranding(opBranding);
+          const sealed = sealImagePayload(imgData, {
+            callsign: opCallsign,
+            glyph: opGlyph, // may be '' → callsign-only device mode
+            sdap: branding,
+          });
+          cx.putImageData(new ImageData(sealed, c.width, c.height), 0, 0);
+          finalUrl = c.toDataURL('image/png'); // MUST stay PNG — JPEG destroys the payload
+        } catch (e) {
+          console.error('[OTR] seal failed, exporting unsealed image:', e);
+        }
+      }
+
       const link = document.createElement('a');
       const shortHash = Math.random().toString(36).substring(2, 6).toUpperCase();
       link.download = `${prefix || 'VRT-MATRIX'}_${shortHash}.png`;
-      link.href = dataUrl;
+      link.href = finalUrl;
       link.click();
     } catch (error) {
       console.error('Pipeline failure:', error);
@@ -296,16 +341,8 @@ export default function App() {
       setIsRendering(false);
     }
   };
-  // ─────────────────────────────────────────────────────────────────────────
 
   // DERIVED STATE
-  // isPlacing: user is actively positioning a fresh design element
-  // We track this explicitly rather than inferring from library state,
-  // because the library persists across lock/unlock but placing does not.
-  // mode drives all layer interaction logic:
-  //   idle    = nothing active, stamps are tappable (unlocked)
-  //   placing = fresh layer from library being positioned
-  //   editing = reactivated stamped layer being adjusted
   const mode = isLocked ? 'idle'
     : reactivatedLayer !== null ? 'editing'
     : isPlacing ? 'placing'
@@ -350,7 +387,6 @@ export default function App() {
       {/* TACTICAL Y-AXIS TOOLSET */}
       <div className={`absolute top-1/2 -translate-y-1/2 flex flex-col gap-8 z-[60] pointer-events-auto transition-all duration-300 ${isAmbi ? 'right-4' : 'left-4'}`}>
 
-        {/* Lock button: visible when library loaded, active, or locked */}
         {(hasActiveLayer || isLocked || payloadLibrary.length > 0) && (
           <button
             onPointerDown={() => {
@@ -361,7 +397,7 @@ export default function App() {
                     const matrix = solveHomography(activeCornersRef.current) || 'matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)';
                     const newLayer = {
                       id: `${activeDesign.id}-${Date.now()}`,
-                      css: activeDesign.css, html: activeDesign.html,
+                      css: activeDesign.css, html: activeDesign.html, scopeClass: activeDesign.scopeClass,
                       matrix, scale: activeScaleRef.current,
                       corners: activeCornersRef.current,
                     };
@@ -392,10 +428,8 @@ export default function App() {
                 holdTimer.current = null;
                 if (isLocked) return;
                 if (hasActiveLayer) {
-                  // Stamp current active layer
                   setStampTrigger(t => t + 1);
                 } else if (payloadLibrary.length > 0) {
-                  // Idle with library content — start fresh placement
                   setIsPlacing(true);
                 }
               }
@@ -423,7 +457,6 @@ export default function App() {
 
           <GroundPlane isPitchMode={isPitchMode} hardwareTrigger={hardwareTrigger} groundImage={groundImage} setGroundImage={setGroundImage} isAmbi={isAmbi} theme={theme} themeCfg={themeCfg}>
 
-            {/* STAMPED LAYERS */}
             <div className="absolute inset-0 z-30" style={{ pointerEvents: 'none' }}>
               {stampedLayers.map((layer, layerIdx) => {
                 const center = layerCenter(layer);
@@ -435,10 +468,9 @@ export default function App() {
                     >
                       <div style={{ transform: `scale(${layer.scale})`, transformOrigin: 'center center', width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                         <style dangerouslySetInnerHTML={{ __html: layer.css }} />
-                        <div className="[&>svg]:max-w-full [&>svg]:max-h-full w-full h-full flex items-center justify-center" dangerouslySetInnerHTML={{ __html: layer.html }} />
+                        <div className={`${layer.scopeClass || ''} [&>svg]:max-w-full [&>svg]:max-h-full w-full h-full flex items-center justify-center`} dangerouslySetInnerHTML={{ __html: layer.html }} />
                       </div>
                     </div>
-                    {/* Tap-to-activate: visible whenever unlocked */}
                     {!isLocked && !isPitchMode && center && (
                       <div
                         style={{
@@ -476,7 +508,7 @@ export default function App() {
               {hasActiveLayer && activeDesign ? (
                 <div className="w-full h-full flex items-center justify-center pointer-events-none">
                   <style dangerouslySetInnerHTML={{ __html: activeDesign.css }} />
-                  <div className="[&>svg]:max-w-full [&>svg]:max-h-full w-full h-full flex items-center justify-center" dangerouslySetInnerHTML={{ __html: activeDesign.html }} />
+                  <div className={`${activeDesign.scopeClass || ''} [&>svg]:max-w-full [&>svg]:max-h-full w-full h-full flex items-center justify-center`} dangerouslySetInnerHTML={{ __html: activeDesign.html }} />
                 </div>
               ) : null}
             </ArtPlane>
@@ -496,26 +528,90 @@ export default function App() {
         </div>
       )}
 
-      {/* EXPORT MODAL */}
+      {/* EXPORT MODAL + OPERATOR CONSOLE */}
       {showExportModal && (
         <div className="absolute inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto">
-          <div className={`rounded-xl px-6 py-5 font-mono flex flex-col gap-4 min-w-[240px] ${themeCfg.panel}`}>
+          <div className={`rounded-xl px-6 py-5 font-mono flex flex-col gap-4 w-[300px] max-h-[88vh] overflow-y-auto ${themeCfg.panel}`}>
             <div className="text-[10px] tracking-[0.25em] font-bold opacity-60">EXPORT // CONFIGURE</div>
+
             <div className="flex flex-col gap-1">
               <label className="text-[9px] tracking-widest opacity-50">PROJECT PREFIX</label>
               <input autoFocus type="text" value={exportPrefix}
                 onChange={e => setExportPrefix(e.target.value.toUpperCase().replace(/\s/g, '-'))}
-                onKeyDown={e => e.key === 'Enter' && executeRenderPipeline(exportPrefix, exportGridlines)}
                 maxLength={24}
                 className={`bg-transparent border-b outline-none font-mono text-sm font-bold tracking-widest pb-0.5 ${isDaylight ? 'border-blue-300 text-slate-700' : isNeon ? 'border-cyan-700 text-cyan-300' : 'border-gray-700 text-gray-400'}`}
               />
             </div>
+
             <div className="flex items-center gap-3 cursor-pointer select-none" onClick={() => setExportGridlines(g => !g)}>
               <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${exportGridlines ? (isNeon ? 'bg-cyan-500 border-cyan-400' : isDaylight ? 'bg-blue-500 border-blue-400' : 'bg-gray-600 border-gray-500') : 'border-current bg-transparent'}`}>
                 {exportGridlines && <div className="w-2 h-2 bg-white rounded-sm" />}
               </div>
               <span className="text-[10px] tracking-widest">INCLUDE GRIDLINES</span>
             </div>
+
+            {/* ── OPERATOR CONSOLE (all optional) ─────────────────────── */}
+            <div className="flex flex-col gap-2 pt-3 border-t border-current/20">
+              <div className="text-[9px] tracking-[0.25em] font-bold opacity-50">OPERATOR // AUTH ARTIFACT</div>
+              <div className="text-[8px] opacity-40 leading-tight -mt-1">All optional. Leave blank and hit RENDER for a normal image.</div>
+
+              <input type="text" value={opCallsign}
+                onChange={e => setOpCallsign(e.target.value.toUpperCase())}
+                placeholder="CALLSIGN"
+                spellCheck="false" autoComplete="off"
+                className={`bg-transparent border-b outline-none font-mono text-sm tracking-widest pb-0.5 ${isDaylight ? 'border-blue-300 text-slate-700' : 'border-cyan-700 text-cyan-300'}`}
+              />
+              <input type="text" value={opGlyph}
+                onChange={e => setOpGlyph(e.target.value)}
+                placeholder="GLYPH"
+                spellCheck="false" autoComplete="off"
+                className={`bg-transparent border-b outline-none font-mono text-sm tracking-widest pb-0.5 ${isDaylight ? 'border-purple-300 text-purple-600' : 'border-purple-700 text-purple-300'}`}
+              />
+
+              <div className="text-[9px] tracking-widest opacity-70">▸ {opMode}</div>
+
+              {opGlyph.trim() && (
+                <div className="text-[8px] text-yellow-500/80 leading-tight">
+                  ⚠ This PNG carries a working credential. Anyone with the file can log in as this callsign. Share it only over a trusted channel — never as a public avatar.
+                </div>
+              )}
+
+              {/* SDAP branding — collapsed by default, only meaningful with a callsign */}
+              {opCallsign.trim() && (
+                <>
+                  <button type="button" onClick={() => setShowBranding(s => !s)}
+                    className="text-[9px] tracking-widest text-left opacity-60 hover:opacity-100 transition-opacity">
+                    {showBranding ? '▾' : '▸'} SDAP BRANDING (optional)
+                  </button>
+                  {showBranding && (
+                    <div className="flex flex-col gap-2 pl-1">
+                      {SDAP_BRANDING_FIELDS.map(f => (
+                        <div key={f.key} className="flex flex-col gap-0.5">
+                          <label className="text-[8px] tracking-widest opacity-40">{f.label}</label>
+                          {f.type === 'select' ? (
+                            <select value={opBranding[f.key]} onChange={e => updateBranding(f.key, e.target.value)}
+                              className="bg-black/40 border border-gray-700 text-gray-300 text-[10px] p-1 rounded">
+                              {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          ) : f.type === 'slider' ? (
+                            <div className="flex items-center gap-2">
+                              <input type="range" min={f.min} max={f.max} step={f.step}
+                                value={opBranding[f.key]} onChange={e => updateBranding(f.key, parseFloat(e.target.value))}
+                                className="flex-1" />
+                              <span className="text-[9px] opacity-50 w-8 text-right">{Number(opBranding[f.key]).toFixed(2)}</span>
+                            </div>
+                          ) : (
+                            <input type="text" value={opBranding[f.key]} onChange={e => updateBranding(f.key, e.target.value)}
+                              className="bg-transparent border-b border-gray-700 text-gray-300 text-[10px] pb-0.5 outline-none" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
             <div className="flex gap-2 pt-1">
               <button onClick={() => setShowExportModal(false)} className={`flex-1 py-2 text-[10px] font-mono tracking-widest rounded active:scale-95 ${themeCfg.btnDanger}`}>CANCEL</button>
               <button onClick={() => executeRenderPipeline(exportPrefix, exportGridlines)} className={`flex-1 py-2 text-[10px] font-mono tracking-widest rounded active:scale-95 ${themeCfg.btnDefault}`}>RENDER</button>
