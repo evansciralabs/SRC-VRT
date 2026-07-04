@@ -48,15 +48,35 @@ function bitsToBytes(bits) {
   return bytes;
 }
 
-export function capacityBytes(pixelLen) {
-  const usableBits = Math.floor(pixelLen / 4) * 3;
+// Only pixels at/above this alpha are used as carriers. Transparent and
+// near-transparent pixels are skipped because PNG encoders premultiply/zero
+// their RGB, which would destroy embedded bits. Must be identical on embed
+// and extract so both walk the same opaque-pixel sequence.
+const CARRIER_ALPHA_MIN = 255;
+
+/** Count usable payload bytes given the actual opaque-pixel count. */
+export function capacityBytes(pixels) {
+  // Backward-compatible: accept a raw length (old callers) OR a pixel array.
+  if (typeof pixels === "number") {
+    const usableBits = Math.floor(pixels / 4) * 3;
+    return Math.max(0, Math.floor(usableBits / 8) - HEADER_BYTES);
+  }
+  let opaque = 0;
+  for (let p = 0; p < pixels.length; p += 4) {
+    if (pixels[p + 3] >= CARRIER_ALPHA_MIN) opaque++;
+  }
+  const usableBits = opaque * 3; // R,G,B of each opaque pixel
   return Math.max(0, Math.floor(usableBits / 8) - HEADER_BYTES);
 }
 
 function embedBytes(pixels, payloadBytes) {
-  const cap = capacityBytes(pixels.length);
+  const cap = capacityBytes(pixels);
   if (payloadBytes.length > cap)
-    throw new Error(`Payload ${payloadBytes.length}B exceeds carrier capacity ${cap}B — use a larger layout.`);
+    throw new Error(
+      `Payload ${payloadBytes.length}B exceeds opaque-pixel capacity ${cap}B — ` +
+        `the design has too little solid (non-transparent) area. Add more opaque ` +
+        `content or a backing layer.`
+    );
   const header = new Uint8Array(HEADER_BYTES);
   header.set(MAGIC, 0);
   header[4] = VERSION;
@@ -67,27 +87,33 @@ function embedBytes(pixels, payloadBytes) {
   const bits = bytesToBits(full);
   const out = new Uint8ClampedArray(pixels);
   let bi = 0;
-  for (let p = 0; p < out.length && bi < bits.length; p += 4)
+  for (let p = 0; p < out.length && bi < bits.length; p += 4) {
+    if (out[p + 3] < CARRIER_ALPHA_MIN) continue; // skip transparent carriers
     for (let c = 0; c < 3 && bi < bits.length; c++, bi++)
       out[p + c] = (out[p + c] & 0xfe) | bits[bi];
+  }
   return out;
 }
 
 function extractBytes(pixels) {
   const hb = new Uint8Array(HEADER_BYTES * 8);
   let bi = 0;
-  for (let p = 0; p < pixels.length && bi < hb.length; p += 4)
+  for (let p = 0; p < pixels.length && bi < hb.length; p += 4) {
+    if (pixels[p + 3] < CARRIER_ALPHA_MIN) continue;
     for (let c = 0; c < 3 && bi < hb.length; c++, bi++) hb[bi] = pixels[p + c] & 1;
+  }
   const header = bitsToBytes(hb);
   for (let i = 0; i < MAGIC.length; i++) if (header[i] !== MAGIC[i]) return null;
   if (header[4] !== VERSION) return null;
   const len = new DataView(header.buffer).getUint32(5, false);
-  if (len > capacityBytes(pixels.length)) return null;
+  if (len > capacityBytes(pixels)) return null;
   const total = (HEADER_BYTES + len) * 8;
   const bits = new Uint8Array(total);
   bi = 0;
-  for (let p = 0; p < pixels.length && bi < total; p += 4)
+  for (let p = 0; p < pixels.length && bi < total; p += 4) {
+    if (pixels[p + 3] < CARRIER_ALPHA_MIN) continue;
     for (let c = 0; c < 3 && bi < total; c++, bi++) bits[bi] = pixels[p + c] & 1;
+  }
   return bitsToBytes(bits).slice(HEADER_BYTES);
 }
 
