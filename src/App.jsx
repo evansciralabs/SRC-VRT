@@ -5,7 +5,8 @@ import ArtPlane from './components/ArtPlane';
 import solveHomography from './utils/mathUtils';
 import { sealImagePayload } from './lib/imagePayloadCodec';
 import { sanitizeVeilpointHtml, scopeVeilpointCss } from './lib/veilpointSanitizer';
-import { DEFAULT_SDAP_BRANDING, SDAP_BRANDING_FIELDS, resolveSdapBranding } from './lib/sdapBranding';
+import { DEFAULT_SDAP_BRANDING, SDAP_BRANDING_FIELDS, resolveSdapBranding, applyAestheticPreset } from './lib/sdapBranding';
+import { designBBox, unionRects, bboxToRect } from './lib/exportBounds';
 
 // VΞILPØINT SANITIZER — now backed by DOMPurify (real DOM parser) + CSS
 // selector scoping, replacing the old regex blocklist that could be bypassed
@@ -283,21 +284,65 @@ export default function App() {
     setIsPitchMode(true);
     await new Promise(resolve => setTimeout(resolve, 150));
     try {
+      // ── COMPUTE TIGHT EXPORT BOUNDS ──────────────────────────────────
+      // union of: the ground image's displayed rect (if any) + every
+      // stamped/active design's projected bbox. Crop to that; all voids
+      // export transparent. No ground + no designs → default portrait canvas.
+      const hostRect = exportRef.current.getBoundingClientRect();
+      const rects = [];
+
+      // ground image displayed rect (object-contain letterboxes it, so read
+      // the real rendered rect and convert to exportRef-local coords)
+      const groundEl = exportRef.current.querySelector('img[alt="Environment"]');
+      if (groundEl) {
+        const g = groundEl.getBoundingClientRect();
+        rects.push({
+          minX: g.left - hostRect.left, minY: g.top - hostRect.top,
+          maxX: g.right - hostRect.left, maxY: g.bottom - hostRect.top,
+        });
+      }
+
+      // every stamped design: project its matrix3d box
+      for (const layer of stampedLayers) {
+        const bb = designBBox(layer.matrix);
+        if (bb) rects.push(bb);
+      }
+      // the currently-active (unstamped) design, if positioned
+      if (hasActiveLayer && activeCornersRef.current) {
+        const m = solveHomography(activeCornersRef.current);
+        const bb = designBBox(m);
+        if (bb) rects.push(bb);
+      }
+
+      const union = unionRects(rects);
+      // clamp the union to the visible host so we never capture offscreen white
+      let cropRect = bboxToRect(union, 0);
+      if (cropRect) {
+        cropRect.left = Math.max(0, cropRect.left);
+        cropRect.top = Math.max(0, cropRect.top);
+        cropRect.width = Math.min(cropRect.width, Math.ceil(hostRect.width) - cropRect.left);
+        cropRect.height = Math.min(cropRect.height, Math.ceil(hostRect.height) - cropRect.top);
+      }
+      // no content at all → sensible default canvas so stego still has a home
+      const DEFAULT_W = 720, DEFAULT_H = 1280;
+      const rect = cropRect || { left: 0, top: 0, width: DEFAULT_W, height: DEFAULT_H };
+
       const dataUrl = await htmlToImage.toPng(exportRef.current, {
         quality: 1.0,
         pixelRatio: 2,
-        backgroundColor: theme === 'daylight' ? '#ffffff' : '#000000',
-        width: window.innerWidth,
-        height: window.innerHeight,
+        backgroundColor: undefined, // TRANSPARENT — no theme floor painted
+        width: rect.width,
+        height: rect.height,
         style: {
-          transform: 'none',
+          transform: `translate(${-rect.left}px, ${-rect.top}px)`,
           transformOrigin: 'top left',
-          width: `${window.innerWidth}px`,
-          height: `${window.innerHeight}px`,
+          width: `${Math.ceil(hostRect.width)}px`,
+          height: `${Math.ceil(hostRect.height)}px`,
           overflow: 'visible',
           position: 'fixed',
           top: '0',
           left: '0',
+          background: 'transparent',
         },
       });
 
@@ -589,8 +634,17 @@ export default function App() {
                         <div key={f.key} className="flex flex-col gap-0.5">
                           <label className="text-[8px] tracking-widest opacity-40">{f.label}</label>
                           {f.type === 'select' ? (
-                            <select value={opBranding[f.key]} onChange={e => updateBranding(f.key, e.target.value)}
-                              className="bg-black/40 border border-gray-700 text-gray-300 text-[10px] p-1 rounded">
+                            <select value={opBranding[f.key]}
+                              onChange={e => {
+                                // Selecting an aesthetic prefills color/type/signature
+                                // with that aesthetic's preset (user can overwrite).
+                                if (f.key === 'aesthetic') {
+                                  setOpBranding(b => applyAestheticPreset(b, e.target.value));
+                                } else {
+                                  updateBranding(f.key, e.target.value);
+                                }
+                              }}
+                              className={`border text-[10px] p-1 rounded ${isDaylight ? 'bg-white border-blue-300 text-slate-700' : 'bg-black/40 border-gray-700 text-gray-200'}`}>
                               {f.options.map(o => <option key={o} value={o}>{o}</option>)}
                             </select>
                           ) : f.type === 'slider' ? (
@@ -602,7 +656,7 @@ export default function App() {
                             </div>
                           ) : (
                             <input type="text" value={opBranding[f.key]} onChange={e => updateBranding(f.key, e.target.value)}
-                              className="bg-transparent border-b border-gray-700 text-gray-300 text-[10px] pb-0.5 outline-none" />
+                              className={`bg-transparent border-b text-[10px] pb-0.5 outline-none ${isDaylight ? 'border-blue-300 text-slate-700 placeholder-slate-400' : 'border-gray-700 text-gray-200 placeholder-gray-600'}`} />
                           )}
                         </div>
                       ))}
