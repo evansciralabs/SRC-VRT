@@ -1,4 +1,4 @@
-# OTR ↔ SRC-D2 integration bundle
+# SDAP ↔ SRC-D2 integration bundle
 
 Render terminal (SRC-VRT) bakes callsign + glyph + SDAP branding into an
 exported PNG as plaintext LSB stego. Dashboard (SRC-D2) reads it on import,
