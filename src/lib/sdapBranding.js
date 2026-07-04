@@ -38,6 +38,60 @@ export const SDAP_BRANDING_FIELDS = [
   { key: "signatureElement", label: "SIGNATURE ELEMENT", type: "text" },
 ];
 
+/**
+ * Per-aesthetic starting points. Selecting an aesthetic in the operator
+ * console prefills these into the editable fields (the user can overwrite
+ * any of them). "Custom" intentionally clears to blank prompts so the user
+ * writes their own from scratch.
+ */
+export const AESTHETIC_PRESETS = Object.freeze({
+  "Futuristic Terminal": {
+    colorDirection: "Near-black ground, one electric accent (cyan or signal-orange), high contrast, scanline/glow restraint. No default purple gradients.",
+    typeDirection: "Mono display face for headers, plain mono/sans for body. Wide tracking on labels.",
+    signatureElement: "A single glowing terminal glyph or status readout as the one memorable flourish.",
+  },
+  "Minimal Editorial": {
+    colorDirection: "Paper-white or warm-off-white ground, near-black ink, one restrained accent used sparingly.",
+    typeDirection: "A characterful serif display face paired with a quiet sans body. Generous line-height.",
+    signatureElement: "One oversized editorial headline or rule line; everything else calm and spacious.",
+  },
+  "Brutalist Mono": {
+    colorDirection: "Raw ink-black on bone, or inverted. No gradients, hard edges, visible structure.",
+    typeDirection: "One mono family at multiple weights. Exposed grid, unapologetic blocks.",
+    signatureElement: "A heavy exposed border or oversized index number as the anchor.",
+  },
+  "Warm Analog": {
+    colorDirection: "Charcoal or deep brown ground, amber/rust accents, subtle grain. Avoid clinical blue-white.",
+    typeDirection: "A warm humanist sans or slab, soft but confident. Comfortable body size.",
+    signatureElement: "A tactile grain or worn-edge treatment on one focal element.",
+  },
+  "Corporate Neutral": {
+    colorDirection: "Cool neutral greys, one brand accent, ample whitespace, conservative contrast.",
+    typeDirection: "A clean neutral sans (single family, two weights). Predictable hierarchy.",
+    signatureElement: "One confident accent-colored CTA; restraint everywhere else.",
+  },
+  "Custom": {
+    colorDirection: "",
+    typeDirection: "",
+    signatureElement: "",
+  },
+});
+
+/**
+ * Returns a new branding object with the preset for `aesthetic` applied over
+ * the CURRENT branding. Only the preset-defined fields (color/type/signature)
+ * are replaced; boldness/technicalConstraints and the aesthetic itself are
+ * preserved from `current`. Callers use this on aesthetic-dropdown change.
+ */
+export function applyAestheticPreset(current, aesthetic) {
+  const preset = AESTHETIC_PRESETS[aesthetic];
+  const next = { ...current, aesthetic };
+  if (preset) {
+    for (const k of Object.keys(preset)) next[k] = preset[k];
+  }
+  return next;
+}
+
 /** Merge image-provided overrides on top of the hardcoded defaults. */
 export function resolveSdapBranding(overrides) {
   if (!overrides || typeof overrides !== "object") return { ...DEFAULT_SDAP_BRANDING };
