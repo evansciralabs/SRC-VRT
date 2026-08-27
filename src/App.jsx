@@ -5,7 +5,8 @@ import ArtPlane from './components/ArtPlane';
 import solveHomography from './utils/mathUtils';
 import { sealImagePayload } from './lib/imagePayloadCodec';
 import { sanitizeVeilpointHtml, scopeVeilpointCss } from './lib/veilpointSanitizer';
-import { DEFAULT_SDAP_BRANDING, SDAP_BRANDING_FIELDS, resolveSdapBranding } from './lib/sdapBranding';
+import { DEFAULT_SDAP_BRANDING, SDAP_BRANDING_FIELDS, resolveSdapBranding, applyAestheticPreset } from './lib/sdapBranding';
+import { designBBox, unionRects, bboxToRect } from './lib/exportBounds';
 
 // VΞILPØINT SANITIZER — now backed by DOMPurify (real DOM parser) + CSS
 // selector scoping, replacing the old regex blocklist that could be bypassed
@@ -283,21 +284,65 @@ export default function App() {
     setIsPitchMode(true);
     await new Promise(resolve => setTimeout(resolve, 150));
     try {
+      // ── COMPUTE TIGHT EXPORT BOUNDS ──────────────────────────────────
+      // union of: the ground image's displayed rect (if any) + every
+      // stamped/active design's projected bbox. Crop to that; all voids
+      // export transparent. No ground + no designs → default portrait canvas.
+      const hostRect = exportRef.current.getBoundingClientRect();
+      const rects = [];
+
+      // ground image displayed rect (object-contain letterboxes it, so read
+      // the real rendered rect and convert to exportRef-local coords)
+      const groundEl = exportRef.current.querySelector('img[alt="Environment"]');
+      if (groundEl) {
+        const g = groundEl.getBoundingClientRect();
+        rects.push({
+          minX: g.left - hostRect.left, minY: g.top - hostRect.top,
+          maxX: g.right - hostRect.left, maxY: g.bottom - hostRect.top,
+        });
+      }
+
+      // every stamped design: project its matrix3d box
+      for (const layer of stampedLayers) {
+        const bb = designBBox(layer.matrix);
+        if (bb) rects.push(bb);
+      }
+      // the currently-active (unstamped) design, if positioned
+      if (hasActiveLayer && activeCornersRef.current) {
+        const m = solveHomography(activeCornersRef.current);
+        const bb = designBBox(m);
+        if (bb) rects.push(bb);
+      }
+
+      const union = unionRects(rects);
+      // clamp the union to the visible host so we never capture offscreen white
+      let cropRect = bboxToRect(union, 0);
+      if (cropRect) {
+        cropRect.left = Math.max(0, cropRect.left);
+        cropRect.top = Math.max(0, cropRect.top);
+        cropRect.width = Math.min(cropRect.width, Math.ceil(hostRect.width) - cropRect.left);
+        cropRect.height = Math.min(cropRect.height, Math.ceil(hostRect.height) - cropRect.top);
+      }
+      // no content at all → sensible default canvas so stego still has a home
+      const DEFAULT_W = 720, DEFAULT_H = 1280;
+      const rect = cropRect || { left: 0, top: 0, width: DEFAULT_W, height: DEFAULT_H };
+
       const dataUrl = await htmlToImage.toPng(exportRef.current, {
         quality: 1.0,
         pixelRatio: 2,
-        backgroundColor: theme === 'daylight' ? '#ffffff' : '#000000',
-        width: window.innerWidth,
-        height: window.innerHeight,
+        backgroundColor: undefined, // TRANSPARENT — no theme floor painted
+        width: rect.width,
+        height: rect.height,
         style: {
-          transform: 'none',
+          transform: `translate(${-rect.left}px, ${-rect.top}px)`,
           transformOrigin: 'top left',
-          width: `${window.innerWidth}px`,
-          height: `${window.innerHeight}px`,
+          width: `${Math.ceil(hostRect.width)}px`,
+          height: `${Math.ceil(hostRect.height)}px`,
           overflow: 'visible',
           position: 'fixed',
           top: '0',
           left: '0',
+          background: 'transparent',
         },
       });
 
@@ -584,28 +629,58 @@ export default function App() {
                     {showBranding ? '▾' : '▸'} SDAP BRANDING (optional)
                   </button>
                   {showBranding && (
-                    <div className="flex flex-col gap-2 pl-1">
-                      {SDAP_BRANDING_FIELDS.map(f => (
-                        <div key={f.key} className="flex flex-col gap-0.5">
-                          <label className="text-[8px] tracking-widest opacity-40">{f.label}</label>
-                          {f.type === 'select' ? (
-                            <select value={opBranding[f.key]} onChange={e => updateBranding(f.key, e.target.value)}
-                              className="bg-black/40 border border-gray-700 text-gray-300 text-[10px] p-1 rounded">
-                              {f.options.map(o => <option key={o} value={o}>{o}</option>)}
-                            </select>
-                          ) : f.type === 'slider' ? (
-                            <div className="flex items-center gap-2">
-                              <input type="range" min={f.min} max={f.max} step={f.step}
-                                value={opBranding[f.key]} onChange={e => updateBranding(f.key, parseFloat(e.target.value))}
-                                className="flex-1" />
-                              <span className="text-[9px] opacity-50 w-8 text-right">{Number(opBranding[f.key]).toFixed(2)}</span>
+                    <div className="flex flex-col gap-1.5 pl-1">
+                      {SDAP_BRANDING_FIELDS.map((f, i) => {
+                        if (f.type === 'category') {
+                          return (
+                            <div key={'c' + i} className="text-[8px] tracking-[0.2em] opacity-50 mt-1.5 mb-0.5 border-b border-current/20 pb-0.5">{f.label}</div>
+                          );
+                        }
+                        const cur = opBranding[f.key];
+                        return (
+                          <div key={f.key} className="flex items-start gap-1.5">
+                            <label className="text-[8px] tracking-wide opacity-40 w-16 shrink-0 pt-1" title={f.tip || ''}>{f.label}</label>
+                            <div className="flex flex-wrap gap-1 flex-1">
+                              {f.type === 'slider' ? (
+                                <div className="flex items-center gap-2 w-full">
+                                  <input type="range" min={f.min} max={f.max} step={f.step} value={cur}
+                                    onChange={e => updateBranding(f.key, parseFloat(e.target.value))} className="flex-1" />
+                                  <span className="text-[9px] opacity-50 w-7 text-right">{Number(cur).toFixed(2)}</span>
+                                </div>
+                              ) : f.type === 'swatch' ? (
+                                <>
+                                  {f.options.map(o => (
+                                    <button key={o.value} type="button" title={o.label || o.value}
+                                      onClick={() => updateBranding(f.key, o.value)}
+                                      className={`w-5 h-5 rounded-sm transition-transform ${cur === o.value ? 'ring-2 ring-white scale-110' : 'ring-1 ring-black/40 hover:scale-105'}`}
+                                      style={{ background: o.value }} />
+                                  ))}
+                                  <input type="text" maxLength={7} placeholder="#hex"
+                                    value={cur && cur.startsWith('#') ? cur : ''}
+                                    onChange={e => updateBranding(f.key, e.target.value)}
+                                    className={`w-14 text-[9px] px-1 rounded-sm border bg-transparent outline-none ${isDaylight ? 'border-blue-300 text-slate-700' : 'border-gray-600 text-gray-200'}`} />
+                                </>
+                              ) : (
+                                f.options.map(o => {
+                                  const val = typeof o === 'string' ? o : o.value;
+                                  const col = typeof o === 'object' ? o.color : null;
+                                  const active = cur === val;
+                                  const onPick = () => f.key === 'aesthetic'
+                                    ? setOpBranding(b => applyAestheticPreset(b, val))
+                                    : updateBranding(f.key, val);
+                                  return (
+                                    <button key={val} type="button" title={(typeof o === 'object' && o.tip) || val} onClick={onPick}
+                                      className={`text-[9px] px-1.5 py-0.5 rounded-sm border transition-all ${active ? 'opacity-100 font-bold border-current' : 'opacity-45 border-transparent hover:opacity-80'}`}
+                                      style={col ? { boxShadow: active ? `inset 0 -2px 0 ${col}, 0 0 6px -2px ${col}` : `inset 0 -2px 0 ${col}` } : undefined}>
+                                      {val}
+                                    </button>
+                                  );
+                                })
+                              )}
                             </div>
-                          ) : (
-                            <input type="text" value={opBranding[f.key]} onChange={e => updateBranding(f.key, e.target.value)}
-                              className="bg-transparent border-b border-gray-700 text-gray-300 text-[10px] pb-0.5 outline-none" />
-                          )}
-                        </div>
-                      ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </>
